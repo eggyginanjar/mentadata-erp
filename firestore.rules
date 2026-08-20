@@ -1,9 +1,10 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
+    // SEMENTARA: Mengizinkan akses baca & tulis tanpa login
+    // Nanti kita akan kunci kembali setelah modul Autentikasi selesai dibuat
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if true;
     }
   }
 }
