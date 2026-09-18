@@ -32,7 +32,7 @@ const routes = [
   { path: '/production', component: Production, meta: { requiresAuth: true, permission: 'production' } },
   { path: '/accounting', component: Accounting, meta: { requiresAuth: true, permission: 'accounting' } },
   { path: '/cashflow', component: Cashflow, meta: { requiresAuth: true, permission: 'cashflow' } },
-  { path: '/reports/profit-loss', name: 'LaporanLabaRugi', component: Reports, meta: { requiresAuth: true, permission: 'reports' } },
+  { path: '/reports/profit-loss', name: 'LaporanLabaRugi', component: Reports, meta: { requiresAuth: true, permission: 'reports-profitloss' } },
   { 
     path: '/reports/neraca', 
     name: 'LaporanNeraca',
