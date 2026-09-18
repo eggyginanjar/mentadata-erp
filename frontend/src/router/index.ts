@@ -10,50 +10,48 @@ import POS from '../pages/pos/index.vue'
 import Products from '../pages/products/index.vue'
 import Users from '../pages/users/index.vue'
 import Settings from '../pages/settings/index.vue'
-import Tenants from '../pages/tenants/index.vue' // <-- IMPOR HALAMAN BARU
+import Tenants from '../pages/tenants/index.vue'
 import Procurement from '../pages/procurement/index.vue'
 import Suppliers from '../pages/suppliers/index.vue'
 import Production from '../pages/production/index.vue'
 import Accounting from '../pages/accounting/index.vue'
 import Cashflow from '../pages/cashflow/index.vue'
 import Reports from '../pages/reports/profit-loss.vue'
-//import Inventory from '../pages/inventory/transfer.vue'
-//import Opname from '../pages/inventory/opname.vue'
 import Login from '../pages/login.vue'
 
 // 1. TENTUKAN META ATURAN BERDASARKAN ID MODUL
+// KONSISTENSI: Semua rute wajib menggunakan meta { permission: 'id_modul' }
 const routes = [
   { path: '/', name: 'Dashboard', component: Dashboard, meta: { requiresAuth: true, permission: 'dashboard' } },
   { path: '/pos', name: 'POS', component: POS, meta: { requiresAuth: true, permission: 'pos' } },
   { path: '/products', name: 'Products', component: Products, meta: { requiresAuth: true, permission: 'products' } },
   { path: '/users', name: 'Users', component: Users, meta: { requiresAuth: true, permission: 'users' } },
   { path: '/settings', name: 'Settings', component: Settings, meta: { requiresAuth: true, permission: 'settings' } },
-  { path: '/tenants', name: 'Tenants', component: Tenants, meta: { requiresAuth: true, permission: 'tenants' } }, // <-- RUTE SUPER ADMIN
-  { path: '/procurement', component: Procurement, meta: { requiresAuth: true, requiredModule: 'products' } },
-  { path: '/production', component: Production, meta: { requiresAuth: true, requiredModule: 'products' } },
-  { path: '/accounting', component: Accounting, meta: { requiresAuth: true, requiredModule: 'accounting' } },
-  { path: '/cashflow', component: Cashflow, meta: { requiresAuth: true, requiredModule: 'cashflow' } },
-  { path: '/reports', component: Reports, meta: { requiresAuth: true, requiredModule: 'reports' } },
-  { path: '/reports/neraca', 
+  { path: '/tenants', name: 'Tenants', component: Tenants, meta: { requiresAuth: true, permission: 'tenants' } },
+  { path: '/procurement', component: Procurement, meta: { requiresAuth: true, permission: 'procurement' } },
+  { path: '/production', component: Production, meta: { requiresAuth: true, permission: 'production' } },
+  { path: '/accounting', component: Accounting, meta: { requiresAuth: true, permission: 'accounting' } },
+  { path: '/cashflow', component: Cashflow, meta: { requiresAuth: true, permission: 'cashflow' } },
+  { path: '/reports', component: Reports, meta: { requiresAuth: true, permission: 'reports' } },
+  { 
+    path: '/reports/neraca', 
     name: 'LaporanNeraca',
     component: () => import('../pages/reports/neraca.vue'), 
-    meta: { requiresAuth: true, requiredModule: 'reports' } 
+    meta: { requiresAuth: true, permission: 'reports-neraca' } // KUNCI KEAMANAN NERACA
   },
-  //{ path: '/inventory', component: Inventory, meta: { requiresAuth: true, requiredModule: 'inventory' } },
-  //{ path: '/inventory/opname', component: Opname, meta: { requiresAuth: true, requiredModule: 'inventory-opname' } },
   { 
     path: '/inventory/transfer', 
     name: 'TransferStok',
     component: () => import('../pages/inventory/transfer.vue'), 
-    meta: { requiresAuth: true, requiredModule: 'inventory-transfer' } 
+    meta: { requiresAuth: true, permission: 'inventory-transfer' } 
   },
   { 
     path: '/inventory/opname', 
     name: 'StockOpname',
     component: () => import('../pages/inventory/opname.vue'), 
-    meta: { requiresAuth: true, requiredModule: 'inventory-opname' } 
+    meta: { requiresAuth: true, permission: 'inventory-opname' } 
   },
-  { path: '/suppliers', component: Suppliers, meta: { requiresAuth: true, requiredModule: 'products' } },
+  { path: '/suppliers', component: Suppliers, meta: { requiresAuth: true, permission: 'suppliers' } },
   { path: '/login', name: 'Login', component: Login }
 ]
 
@@ -62,7 +60,7 @@ const router = createRouter({
   routes
 })
 
-// 2. FUNGSI PEMBANTU: Membaca Izin Modul (Permissions)
+// 2. FUNGSI PEMBANTU: Membaca Izin Modul (Permissions) dari Database Terkini
 const checkUserAccess = (): Promise<{ user: any; role: string | null; permissions: string[] }> => {
   return new Promise((resolve) => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -78,8 +76,7 @@ const checkUserAccess = (): Promise<{ user: any; role: string | null; permission
         const snapshotUser = await getDocs(qUser)
         
         if (snapshotUser.empty) {
-          // JIKA TIDAK ADA DI DATABASE UMKM -> BERARTI DIA SUPER ADMIN MENTADATA!
-          // Beri akses ke Tenants, bersihkan POS dan Products dari layarnya
+          // SUPER ADMIN MENTADATA (Tidak ada di data tenant manapun)
           resolve({ user, role: 'Super Admin', permissions: ['dashboard', 'tenants', 'settings'] })
           return
         }
@@ -88,13 +85,7 @@ const checkUserAccess = (): Promise<{ user: any; role: string | null; permission
         const role = userData.role
         const tenantId = snapshotUser.docs[0].ref.parent.parent!.id
 
-        if (role === 'UMKM Owner') {
-          // JIKA DIA KLIEN UMKM -> BERARTI DIA DEWA DI PERUSAHAANNYA!
-          // Beri akses ke semua modul UMKM, TAPI JANGAN beri akses ke 'tenants'
-          resolve({ user, role, permissions: ['dashboard', 'pos', 'products', 'users', 'settings'] })
-          return
-        }
-
+        // BACA SEMUA ROLE DARI DATABASE (TERMASUK UMKM OWNER YANG KINI PUNYA TIERING LANGGANAN)
         const rolesRef = collection(db, 'tenants', tenantId, 'roles')
         const qRole = query(rolesRef, where('nama_peran', '==', role))
         const snapshotRole = await getDocs(qRole)
@@ -114,7 +105,7 @@ const checkUserAccess = (): Promise<{ user: any; role: string | null; permission
   })
 }
 
-// 3. SATPAM RUTE UTAMA
+// 3. SATPAM RUTE UTAMA (Navigation Guard)
 router.beforeEach(async (to, from, next) => {
   const requiresAuth = to.matched.some(record => record.meta.requiresAuth)
   
@@ -126,18 +117,21 @@ router.beforeEach(async (to, from, next) => {
     } else {
       const requiredPermission = to.meta.permission as string
       
+      // Jika rute butuh permission khusus, tapi user tidak punya...
       if (requiredPermission && !permissions.includes(requiredPermission)) {
         console.warn(`Akses ditolak! Jabatan [${role}] tidak punya izin masuk ke modul [${requiredPermission}]`)
         
+        // Arahkan ke modul aman pertama yang mereka miliki
         if (permissions.includes('tenants')) next('/tenants')
-        else if (permissions.includes('pos')) next('/pos')
         else if (permissions.includes('dashboard')) next('/')
-        else next('/login')
+        else if (permissions.includes('pos')) next('/pos')
+        else next('/login') // Terkunci jika tidak punya izin apa-apa
       } else {
-        next()
+        next() // Bebas masuk
       }
     }
   } else if (to.path === '/login') {
+    // Pencegahan agar user yang sudah login tidak bisa buka halaman login lagi
     const { user, permissions } = await checkUserAccess()
     if (user) {
       if (permissions.includes('tenants')) next('/tenants')
