@@ -308,7 +308,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { db } from '../../firebase'
 import { collection, onSnapshot, addDoc, setDoc, doc, updateDoc, serverTimestamp, deleteDoc, query, where, getDocs, writeBatch } from 'firebase/firestore'
-import { systemModules } from '../../store/modules'
+import { systemModules, fetchSystemModules } from '../../store/modules'
 
 const tab = ref('tenants')
 
@@ -566,7 +566,12 @@ const editModule = (mod) => {
 
 const deleteModule = async (id) => {
   if (confirm(`PERINGATAN GLOBAL! Menghapus modul ini akan menghilangkannya dari seluruh klien UMKM Anda. Yakin hapus modul ${id}?`)) {
-    try { await deleteDoc(doc(db, 'system_modules', id)) } catch (error) { console.error("Gagal menghapus modul:", error) }
+    try { 
+      await deleteDoc(doc(db, 'system_modules', id)) 
+      await fetchSystemModules() // <-- SINKRONISASI ULANG STATE LOKAL SETELAH MENGHAPUS
+    } catch (error) { 
+      console.error("Gagal menghapus modul:", error) 
+    }
   }
 }
 
@@ -576,10 +581,21 @@ const saveModule = async () => {
   try {
     const modRef = doc(db, 'system_modules', formModule.value.id.toLowerCase().trim())
     await setDoc(modRef, {
-      name: formModule.value.name, icon: formModule.value.icon, route: formModule.value.route, urutan: Number(formModule.value.urutan),
-      parent_group: formModule.value.parent_group || '', parent_icon: formModule.value.parent_icon || ''
+      name: formModule.value.name, 
+      icon: formModule.value.icon, 
+      route: formModule.value.route, 
+      urutan: Number(formModule.value.urutan),
+      parent_group: formModule.value.parent_group || '', 
+      parent_icon: formModule.value.parent_icon || ''
     }, { merge: true })
+    
+    await fetchSystemModules() // <-- SINKRONISASI ULANG STATE LOKAL SETELAH MENYIMPAN
+
     dialogModule.value = false
-  } catch (error) { console.error("Gagal menyimpan modul:", error) } finally { isSavingModule.value = false }
+  } catch (error) { 
+    console.error("Gagal menyimpan modul:", error) 
+  } finally { 
+    isSavingModule.value = false 
+  }
 }
 </script>
