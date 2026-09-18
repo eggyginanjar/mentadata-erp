@@ -34,6 +34,11 @@ const routes = [
   { path: '/accounting', component: Accounting, meta: { requiresAuth: true, requiredModule: 'accounting' } },
   { path: '/cashflow', component: Cashflow, meta: { requiresAuth: true, requiredModule: 'cashflow' } },
   { path: '/reports', component: Reports, meta: { requiresAuth: true, requiredModule: 'reports' } },
+  { path: '/reports/neraca', 
+    name: 'LaporanNeraca',
+    component: () => import('../pages/reports/neraca.vue'), 
+    meta: { requiresAuth: true, requiredModule: 'reports' } 
+  },
   //{ path: '/inventory', component: Inventory, meta: { requiresAuth: true, requiredModule: 'inventory' } },
   //{ path: '/inventory/opname', component: Opname, meta: { requiresAuth: true, requiredModule: 'inventory-opname' } },
   { 
