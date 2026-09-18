@@ -332,7 +332,14 @@ const isSavingModule = ref(false)
 const isEditingModule = ref(false)
 const formModule = ref({ id: '', name: '', icon: 'mdi-', route: '/', urutan: 0, parent_group: '', parent_icon: '' })
 
-const sortedSystemModules = computed(() => [...systemModules.value].sort((a, b) => (a.urutan || 0) - (b.urutan || 0)))
+// Mengurutkan modul secara visual dengan membaca 'order' atau 'urutan'
+const sortedSystemModules = computed(() => {
+  return [...systemModules.value].sort((a, b) => {
+    const urutanA = a.order || a.urutan || 0
+    const urutanB = b.order || b.urutan || 0
+    return urutanA - urutanB
+  })
+})
 
 const parentGroupMap = computed(() => {
   const groups = {}
@@ -580,22 +587,26 @@ const saveModule = async () => {
   isSavingModule.value = true
   try {
     const modRef = doc(db, 'system_modules', formModule.value.id.toLowerCase().trim())
+    
     await setDoc(modRef, {
-      name: formModule.value.name, 
-      icon: formModule.value.icon, 
-      route: formModule.value.route, 
+      name: formModule.value.name,
+      icon: formModule.value.icon,
+      route: formModule.value.route,
       urutan: Number(formModule.value.urutan),
-      parent_group: formModule.value.parent_group || '', 
+      order: Number(formModule.value.urutan), // <-- KUNCI PERBAIKAN: Suntikkan field order untuk kompatibilitas
+      parent_group: formModule.value.parent_group || '',
       parent_icon: formModule.value.parent_icon || ''
     }, { merge: true })
-    
-    await fetchSystemModules() // <-- SINKRONISASI ULANG STATE LOKAL SETELAH MENYIMPAN
 
+    if (typeof fetchSystemModules === 'function') {
+      await fetchSystemModules()
+    }
     dialogModule.value = false
-  } catch (error) { 
-    console.error("Gagal menyimpan modul:", error) 
-  } finally { 
-    isSavingModule.value = false 
+  } catch (error) {
+    console.error("Gagal menyimpan modul:", error)
+    alert("Terjadi kesalahan saat menyimpan modul.")
+  } finally {
+    isSavingModule.value = false
   }
 }
 </script>
