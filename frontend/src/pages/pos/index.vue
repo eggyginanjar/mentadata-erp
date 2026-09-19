@@ -226,7 +226,6 @@
 import { ref, computed, onMounted } from 'vue'
 import CartContent from './CartContent.vue'
 import { db } from '../../firebase'
-// Tambahkan impor 'where' untuk menyaring data cabang
 import { collection, onSnapshot, doc, setDoc, serverTimestamp, query, orderBy, limit, where } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
@@ -247,9 +246,8 @@ const receiptDialog = ref(false)
 const selectedTrx = ref(null)
 
 onMounted(() => {
-  // 1. TARIK KATALOG PRODUK (KHUSUS BARANG JADI)
+  // 1. TARIK KATALOG PRODUK
   const productsRef = collection(db, 'tenants', authState.value.tenantId, 'products')
-  // Menerapkan filter di tingkat database agar kasir hanya menerima data siap jual
   const qProducts = query(productsRef, where('tipe', '==', 'Barang Jadi'))
   
   onSnapshot(qProducts, (snapshot) => {
@@ -263,15 +261,13 @@ onMounted(() => {
     })
   })
 
-  // 2. TARIK RIWAYAT TRANSAKSI (DENGAN KACAMATA KUDA CABANG)
+  // 2. TARIK RIWAYAT TRANSAKSI
   const trxRef = collection(db, 'tenants', authState.value.tenantId, 'pos_transactions')
   let qTrx;
   
   if (authState.value.branchId) {
-    // Jika yang login punya ID Cabang (Kasir), hanya tampilkan transaksi cabangnya saja
     qTrx = query(trxRef, where('branch_id', '==', authState.value.branchId), orderBy('tanggal_transaksi', 'desc'), limit(25))
   } else {
-    // Jika yang login tidak punya ID Cabang (Owner / Pusat), tampilkan semua
     qTrx = query(trxRef, orderBy('tanggal_transaksi', 'desc'), limit(25))
   }
 
@@ -310,12 +306,11 @@ const confirmPayment = async () => {
     const trxId = `TRX-${dateStr}-${timeStr}`
     const trxRef = doc(db, 'tenants', authState.value.tenantId, 'pos_transactions', trxId)
     
-    // 3. INJEKSI IDENTITAS CABANG KE DALAM STRUK
     await setDoc(trxRef, {
       nomor_struk: trxId,
       tanggal_transaksi: serverTimestamp(),
       kasir_nama: authState.value.nama,
-      branch_id: authState.value.branchId || 'Kantor Pusat', // <--- DNA CABANG DI TANAM DI SINI
+      branch_id: authState.value.branchId || 'Kantor Pusat',
       items: cart.value,
       total_tagihan: totalAmount.value,
       metode_pembayaran: paymentMethod.value,
@@ -324,10 +319,24 @@ const confirmPayment = async () => {
       status: 'Lunas'
     })
 
+    // Setelah transaksi berhasil, otomatis buka dialog struk untuk dicetak
+    selectedTrx.value = {
+      nomor_struk: trxId,
+      tanggal_transaksi: new Date(), // Gunakan waktu lokal sementara
+      kasir_nama: authState.value.nama,
+      items: [...cart.value],
+      total_tagihan: totalAmount.value,
+      uang_diterima: paymentMethod.value === 'Tunai' ? cashGiven.value : totalAmount.value,
+      kembalian: paymentMethod.value === 'Tunai' ? change.value : 0
+    }
+
     paymentDialog.value = false
     mobileCartDialog.value = false
     snackbar.value = true
     clearCart()
+    
+    // Otomatis buka dialog struk
+    receiptDialog.value = true
   } catch (error) {
     console.error("Gagal memproses transaksi:", error)
     alert('Terjadi kesalahan jaringan. Gagal menyimpan.')
@@ -341,13 +350,118 @@ const openReceiptDetail = (trx) => {
   receiptDialog.value = true
 }
 
+// =========================================================================
+// ENGINE PRINTER THERMAL MENTADATA (Lebar Kertas 58mm)
+// =========================================================================
 const printReceipt = () => {
-  alert('Fitur ini akan dihubungkan ke printer thermal Bluetooth nanti!')
+  if (!selectedTrx.value) return
+
+  const trx = selectedTrx.value
+  const tglStr = formatWaktu(trx.tanggal_transaksi)
+
+  // 1. Menyusun Daftar Barang (Item List)
+  let itemsHtml = ''
+  trx.items.forEach(item => {
+    itemsHtml += `
+      <div class="item-name">${item.name}</div>
+      <div class="flex-container">
+        <span>${item.qty}x @${formatNumber(item.price)}</span>
+        <span>${formatNumber(item.qty * item.price)}</span>
+      </div>
+    `
+  })
+
+  // 2. Merakit Kerangka HTML Khusus Thermal Printer
+  const printContent = `
+    <html>
+      <head>
+        <title>Struk-${trx.nomor_struk || trx.id}</title>
+        <style>
+          /* Pengaturan khusus untuk kertas 58mm (kurang lebih 48mm area cetak) */
+          @page { margin: 0; }
+          body { 
+            font-family: 'Courier New', Courier, monospace; 
+            width: 58mm; 
+            margin: 0 auto; 
+            padding: 2mm 5mm; 
+            color: #000; 
+            font-size: 12px;
+            line-height: 1.2;
+          }
+          .text-center { text-align: center; }
+          .text-bold { font-weight: bold; }
+          .text-lg { font-size: 14px; }
+          .dashed-line { border-top: 1px dashed #000; margin: 5px 0; }
+          .flex-container { display: flex; justify-content: space-between; }
+          .mb-1 { margin-bottom: 3px; }
+          .mt-1 { margin-top: 3px; }
+          .item-name { text-align: left; margin-top: 4px; }
+        </style>
+      </head>
+      <body>
+        <div class="text-center text-bold text-lg mb-1">MENTADATA ERP</div>
+        <div class="text-center mb-1">Jl. Terusan Teknologi No.99</div>
+        <div class="dashed-line"></div>
+        
+        <div>Waktu: ${tglStr}</div>
+        <div>Kasir: ${trx.kasir_nama || 'Admin'}</div>
+        <div>No   : ${trx.nomor_struk || trx.id}</div>
+        
+        <div class="dashed-line"></div>
+        
+        <!-- Daftar Belanja -->
+        ${itemsHtml}
+        
+        <div class="dashed-line"></div>
+        
+        <!-- Ringkasan Pembayaran -->
+        <div class="flex-container text-bold text-lg mt-1">
+          <span>TOTAL</span>
+          <span>${formatNumber(trx.total_tagihan)}</span>
+        </div>
+        <div class="flex-container mt-1">
+          <span>TUNAI/BAYAR</span>
+          <span>${formatNumber(trx.uang_diterima || trx.total_tagihan)}</span>
+        </div>
+        <div class="flex-container">
+          <span>KEMBALI</span>
+          <span>${formatNumber(trx.kembalian || 0)}</span>
+        </div>
+        
+        <div class="dashed-line"></div>
+        <div class="text-center mt-1">Terima Kasih</div>
+        <div class="text-center">Atas Kunjungan Anda</div>
+        <div class="text-center mb-1">--</div>
+      </body>
+    </html>
+  `
+
+  // 3. Menjalankan Proses Cetak melalui Browser
+  const printWindow = window.open('', '_blank', 'width=300,height=600')
+  if (printWindow) {
+    printWindow.document.write(printContent)
+    printWindow.document.close()
+    printWindow.focus()
+    
+    // Memberikan jeda sangat singkat agar DOM selesai dirender sebelum window.print() dipanggil
+    setTimeout(() => {
+      printWindow.print()
+      printWindow.close()
+    }, 250)
+  } else {
+    alert("Gagal mencetak. Harap izinkan pop-up (Allow Pop-ups) di browser Anda untuk aplikasi ini.")
+  }
+}
+
+// Pembantu Format Angka khusus untuk struk (tanpa tulisan "Rp" agar menghemat ruang kertas 58mm)
+const formatNumber = (number) => {
+  return new Intl.NumberFormat('id-ID').format(number)
 }
 
 const formatRupiah = (number) => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number)
 }
+
 const formatWaktu = (timestamp) => {
   if (!timestamp) return 'Menunggu...'
   const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp)
