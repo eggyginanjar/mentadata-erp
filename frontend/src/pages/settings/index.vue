@@ -119,7 +119,7 @@
       </v-window>
     </v-card>
 
-    <!-- Dialog Buat/Edit Jabatan (TETAP UTUH) -->
+    <!-- Dialog Buat/Edit Jabatan -->
     <v-dialog v-model="dialogRole" max-width="600px" persistent scrollable>
       <v-card rounded="xl">
         <v-card-title class="pa-5 text-white d-flex align-center" :class="formRole.nama_peran === 'UMKM Owner' ? 'bg-deep-purple-darken-3' : 'bg-teal-darken-3'">
@@ -149,7 +149,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- Dialog Tambah/Edit Cabang (DIPERBARUI) -->
+    <!-- Dialog Tambah/Edit Cabang -->
     <v-dialog v-model="dialogBranch" max-width="600px" persistent scrollable>
       <v-card rounded="xl">
         <v-card-title class="pa-5 bg-teal-darken-3 text-white d-flex align-center">
@@ -158,27 +158,28 @@
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" color="white" @click="dialogBranch = false"></v-btn>
         </v-card-title>
-        <v-card-text class="pa-6" style="max-height: 60vh;">
+        <v-card-text class="pa-6" style="max-height: 65vh;">
           <v-text-field v-model="formBranch.nama_cabang" label="Nama Cabang (Misal: Cabang Utama, Gudang Timur)" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-4" hide-details></v-text-field>
-          <v-textarea v-model="formBranch.alamat" label="Alamat Lengkap" variant="outlined" color="teal-darken-3" rows="2" class="mb-4" hide-details></v-textarea>
           
           <v-divider class="mb-4 border-dashed"></v-divider>
           <div class="font-weight-bold text-teal-darken-3 mb-3"><v-icon start>mdi-map-marker-radius</v-icon> Pengaturan Geofencing (Absensi HR)</div>
-          <v-alert type="info" variant="tonal" density="compact" class="mb-4 text-caption">
-            Gunakan Google Maps untuk mendapatkan titik koordinat akurat (Klik kanan pada peta, salin angka Latitude dan Longitude).
-          </v-alert>
+          
+          <!-- Tombol Peta Terintegrasi -->
+          <v-text-field 
+            :model-value="(formBranch.latitude && formBranch.longitude) ? `${formBranch.latitude}, ${formBranch.longitude}` : ''"
+            label="Titik Lokasi (Koordinat Peta)" 
+            readonly variant="outlined" density="comfortable" color="teal-darken-3" class="mb-4" 
+            placeholder="Klik Set Peta untuk menentukan koordinat" hide-details
+          >
+            <template v-slot:append>
+              <v-btn type="button" color="teal-darken-3" variant="tonal" prepend-icon="mdi-map-marker-radius" @click="openMapDialog" class="text-none font-weight-bold" height="48" style="margin-top: -8px;">
+                Set Peta
+              </v-btn>
+            </template>
+          </v-text-field>
 
-          <v-row>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model.number="formBranch.latitude" label="Latitude" type="number" variant="outlined" density="comfortable" color="teal-darken-3" hint="Contoh: -7.2148" persistent-hint></v-text-field>
-            </v-col>
-            <v-col cols="12" sm="6">
-              <v-text-field v-model.number="formBranch.longitude" label="Longitude" type="number" variant="outlined" density="comfortable" color="teal-darken-3" hint="Contoh: 107.8924" persistent-hint></v-text-field>
-            </v-col>
-            <v-col cols="12">
-              <v-text-field v-model.number="formBranch.radius" label="Radius Toleransi Absen (Meter)" type="number" variant="outlined" density="comfortable" color="teal-darken-3" hint="Jarak maksimal karyawan bisa melakukan absen dari titik pusat (Disarankan: 50 - 100 meter)" persistent-hint></v-text-field>
-            </v-col>
-          </v-row>
+          <v-textarea v-model="formBranch.alamat" label="Alamat Lengkap (Terisi Otomatis via Peta)" variant="outlined" color="teal-darken-3" rows="2" class="mb-4" hide-details></v-textarea>
+          <v-text-field v-model.number="formBranch.radius" label="Radius Toleransi Absen (Meter)" type="number" variant="outlined" density="comfortable" color="teal-darken-3" hint="Jarak maksimal karyawan bisa melakukan absen dari titik pusat (Disarankan: 50 - 100 meter)" persistent-hint></v-text-field>
         </v-card-text>
         <v-card-actions class="pa-4 bg-grey-lighten-4">
           <v-spacer></v-spacer>
@@ -187,6 +188,43 @@
         </v-card-actions>
       </v-card>
     </v-dialog>
+
+    <!-- Dialog Map Google Maps (Dari Bogalink) -->
+    <v-dialog v-model="mapDialog" max-width="550" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 bg-blue-grey-darken-4 text-white d-flex align-center">
+          <v-icon start>mdi-google-maps</v-icon>
+          <span class="font-weight-bold">Tentukan Lokasi Cabang</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" @click="mapDialog = false"></v-btn>
+        </v-card-title>
+        
+        <v-card-text class="pa-4">
+          <v-btn block color="teal-darken-3" prepend-icon="mdi-crosshairs-gps" @click="getAutoGPS" :loading="isLoadingGps" class="mb-4 text-none font-weight-bold" rounded="lg" variant="tonal">
+            Gunakan GPS Perangkat Saat Ini
+          </v-btn>
+
+          <div class="text-caption font-weight-bold mb-1 text-blue-grey-darken-1">Pratinjau Koordinat:</div>
+          <v-text-field v-model="tempLokasi" variant="outlined" density="compact" class="mb-3" color="teal-darken-3" hide-details readonly></v-text-field>
+
+          <v-card height="250" variant="outlined" class="bg-grey-lighten-2 d-flex align-center justify-center overflow-hidden border">
+            <GoogleMap :api-key="GOOGLE_MAPS_API_KEY" style="width: 100%; height: 100%" :center="mapCenter" :zoom="16" @click="onMapClick">
+              <Marker :options="{ position: markerPosition, draggable: true }" @dragend="onMarkerDragEnd" />
+            </GoogleMap>            
+          </v-card>
+          <div class="text-caption text-grey-darken-1 mt-2 font-italic">
+            *Anda bisa menggeser pin merah atau mengklik area peta untuk mengatur lokasi.
+          </div>
+        </v-card-text>
+        <v-divider></v-divider>
+        <v-card-actions class="pa-4 bg-grey-lighten-4">
+          <v-spacer></v-spacer>
+          <v-btn color="blue-grey-darken-1" variant="text" @click="mapDialog = false" class="text-none font-weight-bold">Batal</v-btn>
+          <v-btn color="teal-darken-3" variant="elevated" rounded="lg" @click="saveLokasi" :disabled="!tempLokasi" :loading="isFetchingAddress" class="text-none font-weight-bold px-6">Konfirmasi Lokasi</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
   </v-container>
 </template>
 
@@ -197,7 +235,21 @@ import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimest
 import { authState } from '../../store/auth'
 import { systemModules } from '../../store/modules'
 
+// Impor komponen peta Google
+import { GoogleMap, Marker } from 'vue3-google-map'
+
 const tab = ref('roles')
+
+// Konfigurasi Peta
+const GOOGLE_MAPS_API_KEY = "AIzaSyD8TZaEr95t_kdfKf-R4IekQSUMErAg-Fs" // Key Peta dari Bogalink
+const mapDialog = ref(false)
+const tempLokasi = ref('')
+const tempLat = ref(0)
+const tempLng = ref(0)
+const isLoadingGps = ref(false)
+const isFetchingAddress = ref(false)
+const mapCenter = ref({ lat: -7.213688, lng: 107.912136 }) // Koordinat Default (Garut)
+const markerPosition = ref({ lat: -7.213688, lng: 107.912136 })
 
 // State Roles (TETAP UTUH)
 const dialogRole = ref(false)
@@ -226,7 +278,6 @@ const getModuleName = (id) => systemModules.value.find(m => m.id === id)?.name |
 onMounted(() => {
   const tenantId = authState.value.tenantId
   
-  // Tarik Data Roles
   onSnapshot(collection(db, 'tenants', tenantId, 'roles'), (snapshot) => {
     const loadedRoles = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     rolesList.value = loadedRoles.sort((a, b) => {
@@ -246,17 +297,80 @@ onMounted(() => {
     }
   })
   
-  // Tarik Data Branches (Dihardcode agar yg nonaktif berada di bawah)
   onSnapshot(collection(db, 'tenants', tenantId, 'branches'), (snapshot) => {
     const loadedBranches = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     branchesList.value = loadedBranches.sort((a, b) => {
-      // Yang statusnya aktif (atau belum di set) naik ke atas
       const aAktif = a.aktif === false ? 0 : 1
       const bAktif = b.aktif === false ? 0 : 1
       return bAktif - aAktif
     })
   })
 })
+
+// ==========================================
+// ENGINE GOOGLE MAPS
+// ==========================================
+const updateTempLokasi = (lat, lng) => {
+  tempLat.value = lat; 
+  tempLng.value = lng;
+  tempLokasi.value = `${lat}, ${lng}`;
+  mapCenter.value = { lat, lng }; 
+  markerPosition.value = { lat, lng };
+}
+
+const openMapDialog = () => {
+  if (formBranch.value.latitude && formBranch.value.longitude) {
+    updateTempLokasi(formBranch.value.latitude, formBranch.value.longitude);
+  } else {
+    // Pusat Default (Garut) jika cabang baru
+    updateTempLokasi(-7.213688, 107.912136); 
+  }
+  mapDialog.value = true
+}
+
+const getAutoGPS = () => {
+  isLoadingGps.value = true
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { 
+        updateTempLokasi(pos.coords.latitude, pos.coords.longitude); 
+        isLoadingGps.value = false; 
+      },
+      (err) => { 
+        alert('Gagal mendapatkan koordinat GPS. Pastikan peramban diizinkan mengakses lokasi.'); 
+        isLoadingGps.value = false; 
+      },
+      { enableHighAccuracy: true }
+    )
+  } else {
+    alert("Browser Anda tidak mendukung fitur Lokasi GPS.");
+    isLoadingGps.value = false;
+  }
+}
+
+const onMarkerDragEnd = (event) => updateTempLokasi(event.latLng.lat(), event.latLng.lng())
+const onMapClick = (event) => updateTempLokasi(event.latLng.lat(), event.latLng.lng())
+
+const saveLokasi = async () => {
+  formBranch.value.latitude = tempLat.value; 
+  formBranch.value.longitude = tempLng.value;
+  
+  isFetchingAddress.value = true;
+  try {
+    const geocoder = new window.google.maps.Geocoder();
+    const latlng = { lat: parseFloat(tempLat.value), lng: parseFloat(tempLng.value) };
+    geocoder.geocode({ location: latlng }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        formBranch.value.alamat = results[0].formatted_address; // Auto-fill alamat
+      }
+      isFetchingAddress.value = false; 
+      mapDialog.value = false; 
+    });
+  } catch (error) {
+    isFetchingAddress.value = false; 
+    mapDialog.value = false;
+  }
+}
 
 // ==========================================
 // FUNGSI JABATAN (ROLES)
@@ -315,7 +429,7 @@ const saveRole = async () => {
 }
 
 // ==========================================
-// FUNGSI CABANG (BRANCHES) - CRUD & GEOFENCE
+// FUNGSI CABANG (BRANCHES)
 // ==========================================
 const openAddBranchDialog = () => {
   isEditingBranch.value = false
@@ -337,7 +451,6 @@ const editBranch = (branch) => {
   dialogBranch.value = true
 }
 
-// Soft Delete / Reactivation
 const toggleBranchStatus = async (branch) => {
   const currentStatus = branch.aktif === false ? false : true
   const actionText = currentStatus ? 'MENONAKTIFKAN' : 'MENGAKTIFKAN KEMBALI'
@@ -360,7 +473,6 @@ const saveBranch = async () => {
     const branchData = {
       nama_cabang: formBranch.value.nama_cabang,
       alamat: formBranch.value.alamat,
-      // Pastikan koordinat tersimpan sebagai angka desimal jika diisi
       latitude: formBranch.value.latitude ? parseFloat(formBranch.value.latitude) : null,
       longitude: formBranch.value.longitude ? parseFloat(formBranch.value.longitude) : null,
       radius: formBranch.value.radius ? parseInt(formBranch.value.radius) : 50,
@@ -372,7 +484,7 @@ const saveBranch = async () => {
     } else {
       await addDoc(collection(db, 'tenants', authState.value.tenantId, 'branches'), {
         ...branchData,
-        aktif: true, // Cabang baru otomatis aktif
+        aktif: true,
         created_at: serverTimestamp()
       })
     }
