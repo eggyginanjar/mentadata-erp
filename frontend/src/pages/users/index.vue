@@ -97,7 +97,12 @@
               </div>
               <v-row dense>
                 <v-col cols="12" sm="6" md="4">
-                  <v-text-field v-model="form.nik" label="NIK / ID Karyawan" placeholder="Misal: EMP-001" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details></v-text-field>
+                  <v-text-field 
+                    v-model="form.nik" 
+                    label="NIK / ID Karyawan" 
+                    variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details="auto"
+                    hint="Terisi otomatis, bisa disesuaikan" persistent-hint
+                  ></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
                   <v-text-field v-model="form.nama" label="Nama Lengkap" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details></v-text-field>
