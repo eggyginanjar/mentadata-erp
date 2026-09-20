@@ -51,6 +51,12 @@ const routes = [
     component: () => import('../pages/inventory/opname.vue'), 
     meta: { requiresAuth: true, permission: 'inventory-opname' } 
   },
+  { 
+    path: '/attendance', 
+    name: 'Presensi', 
+    component: () => import('../pages/attendance/index.vue'), 
+    meta: { requiresAuth: true, permission: 'attendance' } 
+  },
   { path: '/suppliers', component: Suppliers, meta: { requiresAuth: true, permission: 'suppliers' } },
   { path: '/login', name: 'Login', component: Login }
 ]
