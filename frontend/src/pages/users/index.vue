@@ -5,7 +5,7 @@
     <v-row class="mb-6" align="center">
       <v-col>
         <h2 class="text-h5 font-weight-bold text-blue-grey-darken-4">Kelola Karyawan (HRIS)</h2>
-        <p class="text-body-2 text-blue-grey-lighten-1">Manajemen data personel, hak akses sistem, dan parameter komponen gaji.</p>
+        <p class="text-body-2 text-blue-grey-lighten-1">Manajemen data personel, hak akses sistem, waktu kerja, dan parameter komponen gaji.</p>
       </v-col>
       <v-col cols="auto">
         <v-btn 
@@ -25,7 +25,7 @@
           <tr>
             <th class="font-weight-bold text-blue-grey-darken-3" style="width: 250px;">Nama Lengkap & NIK</th>
             <th class="font-weight-bold text-blue-grey-darken-3">Jabatan & Penempatan</th>
-            <th class="font-weight-bold text-blue-grey-darken-3">Tipe Gaji</th>
+            <th class="font-weight-bold text-blue-grey-darken-3">Jadwal Shift</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-right">Gaji Pokok</th>
             <th class="text-center font-weight-bold text-blue-grey-darken-3">Status</th>
             <th class="text-center font-weight-bold text-blue-grey-darken-3" style="width: 120px;">Aksi</th>
@@ -51,12 +51,12 @@
               <div class="text-caption text-blue-grey-darken-1"><v-icon start size="x-small">mdi-map-marker-outline</v-icon>{{ getBranchName(user.branch_id) }}</div>
             </td>
             <td>
-              <v-chip size="x-small" color="blue-grey-darken-1" variant="outlined" class="font-weight-bold">
-                {{ user.tipe_gaji || 'Bulanan' }}
-              </v-chip>
+              <div class="font-weight-bold text-indigo-darken-2 text-body-2">{{ getShiftName(user.shift_id) }}</div>
+              <div class="text-caption text-grey-darken-1 mt-1">Libur: {{ user.hari_libur?.length > 0 ? user.hari_libur.join(', ') : 'Tidak Ada' }}</div>
             </td>
             <td class="text-right font-weight-bold text-blue-grey-darken-3">
               {{ formatRupiah(user.gaji_pokok || 0) }}
+              <div class="text-caption text-grey mt-1">{{ user.tipe_gaji || 'Bulanan' }}</div>
             </td>
             <td class="text-center">
               <v-chip size="small" :color="user.aktif ? 'success' : 'error'" variant="flat" class="font-weight-bold">
@@ -79,8 +79,8 @@
     </v-card>
 
     <!-- Dialog Form (HR Master Data) -->
-    <v-dialog v-model="dialog" max-width="800px" persistent scrollable>
-      <v-card rounded="xl" color="white" max-height="90vh" class="d-flex flex-column">
+    <v-dialog v-model="dialog" max-width="850px" persistent scrollable>
+      <v-card rounded="xl" color="grey-lighten-4" max-height="90vh" class="d-flex flex-column">
         <v-card-title class="pa-5 bg-teal-darken-3 text-white d-flex align-center flex-shrink-0">
           <v-icon start>{{ isEditing ? 'mdi-account-edit' : 'mdi-card-account-details-outline' }}</v-icon>
           <span class="font-weight-bold">{{ isEditing ? 'Edit Profil Karyawan' : 'Form Pendaftaran Karyawan' }}</span>
@@ -88,21 +88,16 @@
           <v-btn icon="mdi-close" variant="text" color="white" @click="closeDialog"></v-btn>
         </v-card-title>
         
-        <v-card-text class="pa-0 flex-grow-1 overflow-y-auto bg-grey-lighten-4">
+        <v-card-text class="pa-4 flex-grow-1 overflow-y-auto">
           <v-form @submit.prevent="saveUser">
             <!-- SEGMEN 1: DATA PERSONAL & SISTEM -->
-            <div class="pa-5 bg-white mb-3">
+            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg">
               <div class="font-weight-bold text-teal-darken-3 mb-4 d-flex align-center">
                 <v-icon start size="small">mdi-account-circle</v-icon> Data Personal & Akses Sistem
               </div>
               <v-row dense>
                 <v-col cols="12" sm="6" md="4">
-                  <v-text-field 
-                    v-model="form.nik" 
-                    label="NIK / ID Karyawan" 
-                    variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details="auto"
-                    hint="Terisi otomatis, bisa disesuaikan" persistent-hint
-                  ></v-text-field>
+                  <v-text-field v-model="form.nik" label="NIK / ID Karyawan" hint="Dihasilkan Otomatis" persistent-hint variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3"></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
                   <v-text-field v-model="form.nama" label="Nama Lengkap" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details></v-text-field>
@@ -128,10 +123,44 @@
                   ></v-select>
                 </v-col>
               </v-row>
-            </div>
+            </v-card>
 
-            <!-- SEGMEN 2: KOMPONEN GAJI (PAYROLL) -->
-            <div class="pa-5 bg-white mb-3">
+            <!-- SEGMEN 2: WAKTU KERJA & PENJADWALAN (BARU) -->
+            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg">
+              <div class="font-weight-bold text-indigo-darken-3 mb-4 d-flex align-center">
+                <v-icon start size="small">mdi-calendar-clock</v-icon> Waktu Kerja & Penjadwalan
+              </div>
+              <v-row dense>
+                <v-col cols="12" sm="6">
+                  <v-select
+                    v-model="form.shift_id"
+                    :items="shiftsList"
+                    item-title="nama_shift"
+                    item-value="id"
+                    label="Template Shift Default"
+                    variant="outlined" density="comfortable" color="indigo-darken-3" class="mb-3"
+                    hint="Jam kerja baku karyawan jika tidak ada jadwal rotasi." persistent-hint
+                  >
+                    <template v-slot:item="{ props, item }">
+                      <v-list-item v-bind="props" :subtitle="`${item.raw.jam_masuk} - ${item.raw.jam_pulang}`"></v-list-item>
+                    </template>
+                  </v-select>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-select
+                    v-model="form.hari_libur"
+                    :items="['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']"
+                    label="Hari Libur Rutin"
+                    multiple chips closable-chips
+                    variant="outlined" density="comfortable" color="indigo-darken-3" class="mb-3"
+                    hint="Hari istirahat mingguan baku." persistent-hint
+                  ></v-select>
+                </v-col>
+              </v-row>
+            </v-card>
+
+            <!-- SEGMEN 3: KOMPONEN GAJI (PAYROLL) -->
+            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg">
               <div class="font-weight-bold text-orange-darken-3 mb-4 d-flex align-center">
                 <v-icon start size="small">mdi-cash-multiple</v-icon> Komponen Gaji (Payroll)
               </div>
@@ -151,16 +180,16 @@
                   <v-text-field v-model.number="form.uang_transport" label="Uang Transport Harian (Opsional)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details></v-text-field>
                 </v-col>
               </v-row>
-            </div>
+            </v-card>
 
-            <!-- SEGMEN 3: STATUS AKUN -->
-            <div class="pa-5 bg-white" v-if="isEditing && form.role !== 'UMKM Owner'">
+            <!-- SEGMEN 4: STATUS AKUN -->
+            <v-card class="pa-5 border-sm" elevation="0" rounded="lg" v-if="isEditing && form.role !== 'UMKM Owner'">
               <v-switch 
                 v-model="form.aktif" 
                 :label="form.aktif ? 'Akun & Status HR Aktif' : 'Karyawan Dinonaktifkan (Resign/Diberhentikan)'" 
                 :color="form.aktif ? 'success' : 'error'" hide-details density="compact"
               ></v-switch>
-            </div>
+            </v-card>
           </v-form>
         </v-card-text>
         
@@ -192,8 +221,9 @@ const editId = ref(null)
 
 const customRoles = ref([]) 
 const branchesList = ref([])
+const shiftsList = ref([]) // TAMBAHAN: List Template Shift
 
-// Form diperluas dengan field HR
+// Form diperluas dengan field Shift & Libur
 const form = ref({ 
   nik: '', 
   nama: '', 
@@ -201,6 +231,8 @@ const form = ref({
   role: 'Kasir', 
   branch_id: null, 
   aktif: true,
+  shift_id: null,        // BARU
+  hari_libur: [],        // BARU
   tipe_gaji: 'Bulanan',
   gaji_pokok: 0,
   uang_makan: 0,
@@ -210,7 +242,6 @@ const form = ref({
 const roleOptions = computed(() => {
   const roles = ['UMKM Owner']
   customRoles.value.forEach(r => {
-    // Hanya tambahkan jika bukan UMKM Owner agar tidak dobel
     if (r.nama_peran !== 'UMKM Owner') {
       roles.push(r.nama_peran)
     }
@@ -227,8 +258,8 @@ const isBranchRole = computed(() => {
 onMounted(() => {
   const tenantId = authState.value.tenantId
 
+  // Load Karyawan
   onSnapshot(collection(db, 'tenants', tenantId, 'users'), (snapshot) => {
-    // Sortir agar Owner tetap di atas
     const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     usersList.value = loaded.sort((a, b) => {
       if (a.role === 'UMKM Owner') return -1;
@@ -237,48 +268,48 @@ onMounted(() => {
     })
   })
 
+  // Load Jabatan
   onSnapshot(collection(db, 'tenants', tenantId, 'roles'), (snapshot) => {
     customRoles.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
   })
   
+  // Load Cabang
   onSnapshot(collection(db, 'tenants', tenantId, 'branches'), (snapshot) => {
     branchesList.value = snapshot.docs.map(doc => ({ id: doc.id, nama_cabang: doc.data().nama_cabang }))
   })
+
+  // Load Shift (BARU)
+  onSnapshot(collection(db, 'tenants', tenantId, 'master_shifts'), (snapshot) => {
+    shiftsList.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  })
 })
 
-// ==========================================
-// ENGINE PEMBUAT NIK OTOMATIS (Aman Multi-Tenant)
-// ==========================================
 const generateNIK = () => {
   const now = new Date()
-  const yy = String(now.getFullYear()).slice(-2) // Ambil 2 digit tahun (26)
-  const mm = String(now.getMonth() + 1).padStart(2, '0') // Bulan (09)
-  const prefix = `${yy}${mm}` // Contoh: 2609
+  const yy = String(now.getFullYear()).slice(-2) 
+  const mm = String(now.getMonth() + 1).padStart(2, '0') 
+  const prefix = `${yy}${mm}` 
 
-  // 1. Filter hanya karyawan di tenant ini yang NIK-nya berawalan 2609
-  // 2. Ekstrak 4 digit terakhirnya, ubah jadi angka
   const existingSeqs = usersList.value
     .filter(u => u.nik && u.nik.startsWith(prefix))
     .map(u => parseInt(u.nik.slice(4)))
     .filter(n => !isNaN(n))
 
-  // Cari angka terbesar, lalu tambah 1
   let nextSeq = 1
   if (existingSeqs.length > 0) {
     nextSeq = Math.max(...existingSeqs) + 1
   }
 
-  // Gabungkan prefix dengan urutan baru (format 4 digit pakai padStart)
   return `${prefix}${String(nextSeq).padStart(4, '0')}`
 }
 
 const openAddDialog = () => {
   isEditing.value = false
   editId.value = null
-  
   form.value = { 
-    nik: generateNIK(), // <--- INJEKSI NIK OTOMATIS DI SINI
+    nik: generateNIK(), 
     nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
+    shift_id: null, hari_libur: [],
     tipe_gaji: 'Bulanan', gaji_pokok: 0, uang_makan: 0, uang_transport: 0
   }
   dialog.value = true
@@ -294,6 +325,8 @@ const editUser = (user) => {
     role: user.role, 
     branch_id: user.branch_id || null, 
     aktif: user.aktif !== undefined ? user.aktif : true,
+    shift_id: user.shift_id || null,
+    hari_libur: user.hari_libur || [],
     tipe_gaji: user.tipe_gaji || 'Bulanan',
     gaji_pokok: user.gaji_pokok || 0,
     uang_makan: user.uang_makan || 0,
@@ -311,7 +344,7 @@ const saveUser = async () => {
     alert('Nama dan Email wajib diisi!')
     return
   }
-  // isBranchRole memastikan bahwa role staff/kasir tidak dibiarkan menggantung tanpa cabang
+  
   if (isBranchRole.value && !form.value.branch_id && form.value.role !== 'UMKM Owner') {
     alert('Penempatan Cabang wajib dipilih untuk posisi ini!')
     return
@@ -326,6 +359,8 @@ const saveUser = async () => {
       role: form.value.role,
       branch_id: form.value.role === 'UMKM Owner' ? null : form.value.branch_id,
       aktif: form.value.aktif,
+      shift_id: form.value.shift_id,
+      hari_libur: form.value.hari_libur,
       tipe_gaji: form.value.tipe_gaji,
       gaji_pokok: Number(form.value.gaji_pokok),
       uang_makan: Number(form.value.uang_makan),
@@ -364,6 +399,12 @@ const getBranchName = (branchId) => {
   if (!branchId) return 'Kantor Pusat (HQ)'
   const branch = branchesList.value.find(b => b.id === branchId)
   return branch ? branch.nama_cabang : 'Kantor Pusat (HQ)'
+}
+
+const getShiftName = (shiftId) => {
+  if (!shiftId) return 'Belum Diatur'
+  const shift = shiftsList.value.find(s => s.id === shiftId)
+  return shift ? shift.nama_shift : 'Shift Terhapus'
 }
 
 const formatRupiah = (number) => {
