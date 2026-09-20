@@ -142,7 +142,11 @@
                     hint="Jam kerja baku karyawan jika tidak ada jadwal rotasi." persistent-hint
                   >
                     <template v-slot:item="{ props, item }">
-                      <v-list-item v-bind="props" :subtitle="`${item.raw.jam_masuk} - ${item.raw.jam_pulang}`"></v-list-item>
+                      <!-- PERBAIKAN DI BARIS INI: Tambahkan pengecekan item?.raw -->
+                      <v-list-item 
+                        v-bind="props" 
+                        :subtitle="item?.raw ? `${item.raw.jam_masuk} - ${item.raw.jam_pulang}` : ''"
+                      ></v-list-item>
                     </template>
                   </v-select>
                 </v-col>
