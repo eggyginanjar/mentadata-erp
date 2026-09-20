@@ -204,15 +204,18 @@ const form = ref({
 
 const roleOptions = computed(() => {
   const roles = ['UMKM Owner']
-  customRoles.value.forEach(r => roles.push(r.nama_peran))
+  customRoles.value.forEach(r => {
+    // Hanya tambahkan jika bukan UMKM Owner agar tidak dobel
+    if (r.nama_peran !== 'UMKM Owner') {
+      roles.push(r.nama_peran)
+    }
+  })
   return roles
 })
 
 const isBranchRole = computed(() => {
   if (form.value.role === 'UMKM Owner') return false
   const selectedRoleData = customRoles.value.find(r => r.nama_peran === form.value.role)
-  // Menilai apakah jabatan ini "bekerja di cabang". Logikanya: Jika dia kasir, inventory cabang, dsb.
-  // Untuk amannya, kita anggap semua jabatan selain Owner & Super Admin berpotensi diikat ke cabang tertentu.
   return selectedRoleData ? true : false
 })
 
@@ -238,11 +241,39 @@ onMounted(() => {
   })
 })
 
+// ==========================================
+// ENGINE PEMBUAT NIK OTOMATIS (Aman Multi-Tenant)
+// ==========================================
+const generateNIK = () => {
+  const now = new Date()
+  const yy = String(now.getFullYear()).slice(-2) // Ambil 2 digit tahun (26)
+  const mm = String(now.getMonth() + 1).padStart(2, '0') // Bulan (09)
+  const prefix = `${yy}${mm}` // Contoh: 2609
+
+  // 1. Filter hanya karyawan di tenant ini yang NIK-nya berawalan 2609
+  // 2. Ekstrak 4 digit terakhirnya, ubah jadi angka
+  const existingSeqs = usersList.value
+    .filter(u => u.nik && u.nik.startsWith(prefix))
+    .map(u => parseInt(u.nik.slice(4)))
+    .filter(n => !isNaN(n))
+
+  // Cari angka terbesar, lalu tambah 1
+  let nextSeq = 1
+  if (existingSeqs.length > 0) {
+    nextSeq = Math.max(...existingSeqs) + 1
+  }
+
+  // Gabungkan prefix dengan urutan baru (format 4 digit pakai padStart)
+  return `${prefix}${String(nextSeq).padStart(4, '0')}`
+}
+
 const openAddDialog = () => {
   isEditing.value = false
   editId.value = null
+  
   form.value = { 
-    nik: '', nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
+    nik: generateNIK(), // <--- INJEKSI NIK OTOMATIS DI SINI
+    nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
     tipe_gaji: 'Bulanan', gaji_pokok: 0, uang_makan: 0, uang_transport: 0
   }
   dialog.value = true
