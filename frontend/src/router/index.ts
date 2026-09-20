@@ -57,6 +57,12 @@ const routes = [
     component: () => import('../pages/attendance/index.vue'), 
     meta: { requiresAuth: true, permission: 'attendance' } 
   },
+  { 
+    path: '/hr/recap', 
+    name: 'RekapHR',
+    component: () => import('../pages/hr/recap.vue'), 
+    meta: { requiresAuth: true, permission: 'hr-recap' } 
+  },
   { path: '/suppliers', component: Suppliers, meta: { requiresAuth: true, permission: 'suppliers' } },
   { path: '/login', name: 'Login', component: Login }
 ]

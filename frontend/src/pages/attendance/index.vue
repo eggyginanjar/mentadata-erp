@@ -164,6 +164,22 @@
         </v-card>
       </v-col>
     </v-row>
+
+    <!-- PENGGANTI ALERT: Vuetify Snackbar -->
+    <v-snackbar 
+      v-model="snackbar.show" 
+      :color="snackbar.color" 
+      :timeout="3000" 
+      rounded="pill" 
+      elevation="4"
+      location="top"
+    >
+      <div class="d-flex align-center font-weight-bold">
+        <v-icon start>{{ snackbar.icon }}</v-icon>
+        {{ snackbar.text }}
+      </div>
+    </v-snackbar>
+
   </v-container>
 </template>
 
@@ -191,6 +207,30 @@ const todayRecord = ref(null)
 
 // Format tanggal YYYY-MM-DD lokal
 const todayDateStr = new Date().toISOString().split('T')[0]
+
+// STATE BARU UNTUK SNACKBAR
+const snackbar = ref({
+  show: false,
+  text: '',
+  color: 'success',
+  icon: 'mdi-check-circle'
+})
+
+// FUNGSI PEMBANTU SNACKBAR
+const showNotification = (text, type = 'success') => {
+  snackbar.value.text = text
+  if (type === 'success') {
+    snackbar.value.color = 'teal-darken-3'
+    snackbar.value.icon = 'mdi-check-circle'
+  } else if (type === 'error') {
+    snackbar.value.color = 'error'
+    snackbar.value.icon = 'mdi-alert-circle'
+  } else {
+    snackbar.value.color = 'warning'
+    snackbar.value.icon = 'mdi-information'
+  }
+  snackbar.value.show = true
+}
 
 // Haversine Formula: Menghitung jarak dua titik koordinat bumi (dalam satuan meter)
 const calculateHaversine = (lat1, lon1, lat2, lon2) => {
@@ -232,7 +272,7 @@ const initCamera = async () => {
     }
   } catch (err) {
     console.error("Gagal membuka kamera:", err)
-    alert("Izin kamera ditolak atau perangkat kamera tidak ditemukan.")
+    showNotification("Izin kamera ditolak atau perangkat tidak ditemukan.", "error") // <-- Ganti alert
   }
 }
 
@@ -276,7 +316,7 @@ const detectLocation = () => {
       },
       (err) => {
         console.error("Gagal GPS:", err)
-        alert("Gagal membaca koordinat GPS. Pastikan izin lokasi aktif.")
+        showNotification("Gagal membaca GPS. Pastikan izin lokasi aktif.", "error") // <-- Ganti alert
         isLocating.value = false
       },
       { enableHighAccuracy: true, timeout: 10000 }
@@ -351,11 +391,12 @@ const submitAttendance = async (type) => {
     await setDoc(attRef, payload, { merge: true })
     todayRecord.value = { ...(todayRecord.value || {}), ...payload }
 
-    alert(`Presensi ${type === 'IN' ? 'Masuk' : 'Pulang'} berhasil dicatat!`)
+    // <-- GANTI ALERT DENGAN SNACKBAR
+    showNotification(`Presensi ${type === 'IN' ? 'Masuk' : 'Pulang'} berhasil dicatat!`, "success") 
     retakeSnapshot()
   } catch (e) {
     console.error("Gagal submit absen:", e)
-    alert("Terjadi kesalahan saat menyimpan presensi.")
+    showNotification("Terjadi kesalahan saat menyimpan presensi.", "error") // <-- Ganti alert
   } finally {
     isSubmitting.value = false
   }
