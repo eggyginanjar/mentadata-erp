@@ -408,7 +408,7 @@ const deletePattern = async (id) => {
   if (confirm('Yakin ingin menghapus Pola Rotasi ini? Karyawan yang terikat pola ini harus diperbarui manual.')) {
     await deleteDoc(doc(db, 'tenants', authState.value.tenantId, 'shift_patterns', id))
   }
-}
+} 
 
 // Fungsi pembantu untuk pratinjau tabel Roster
 const getShiftCode = (shiftId) => {
