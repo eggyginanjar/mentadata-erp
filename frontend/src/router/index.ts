@@ -75,6 +75,12 @@ const routes = [
     component: () => import('../pages/hr/payroll.vue'), 
     meta: { requiresAuth: true, permission: 'hr-payroll' } 
   },
+  { 
+    path: '/hr/components', 
+    name: 'PayrollComponents',
+    component: () => import('../pages/hr/components.vue'), 
+    meta: { requiresAuth: true, permission: 'hr-components' } 
+  },
   { path: '/suppliers', component: Suppliers, meta: { requiresAuth: true, permission: 'suppliers' } },
   { path: '/login', name: 'Login', component: Login }
 ]
