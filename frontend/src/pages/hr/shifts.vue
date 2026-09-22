@@ -210,7 +210,7 @@
                         :label="day.is_libur ? 'LIBUR' : 'KERJA'" 
                         :color="day.is_libur ? 'red-darken-1' : 'teal-darken-3'" 
                         hide-details density="compact" class="font-weight-bold"
-                        @change="if(day.is_libur) day.shift_id = null"
+                        @change="handleLiburChange(day)"
                       ></v-switch>
                     </td>
                     <td class="py-2">
@@ -379,6 +379,11 @@ const editPattern = (pattern) => {
 }
 
 const closePatternDialog = () => patternDialog.value = false
+const handleLiburChange = (day) => {
+  if (day.is_libur) {
+    day.shift_id = null;
+  }
+}
 
 const savePattern = async () => {
   if (!patternForm.value.nama_pola) return alert('Nama Pola Rotasi wajib diisi!')
