@@ -105,7 +105,7 @@
           
           <div v-if="selectedSlip.upah_lembur > 0">
             <div class="d-flex justify-space-between mt-2 pt-2 border-t border-dashed">
-              <span class="text-body-2 text-orange-darken-3">Uang Lembur ({{ selectedSlip.total_jam_lembur.toFixed(1)}  Jam)</span>
+              <span class="text-body-2 text-orange-darken-3">Uang Lembur ({{ selectedSlip.total_jam_lembur.toFixed(1) }} Jam)</span>
               <span class="font-weight-bold text-orange-darken-3">+ {{ formatRupiah(selectedSlip.upah_lembur) }}</span>
             </div>
             <div class="text-caption text-grey ml-2 mt-1" v-for="(rincian, i) in selectedSlip.rincian_lembur" :key="i">
