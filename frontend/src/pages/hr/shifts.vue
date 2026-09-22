@@ -18,7 +18,7 @@
 
       <v-window v-model="tab">
         <!-- ======================================================= -->
-        <!-- TAB 1: MASTER SHIFT (Sama seperti sebelumnya)           -->
+        <!-- TAB 1: MASTER SHIFT                                     -->
         <!-- ======================================================= -->
         <v-window-item value="master">
           <div class="pa-4 d-flex justify-end bg-white">
@@ -121,7 +121,7 @@
     </v-card>
 
     <!-- ======================================================= -->
-    <!-- DIALOG: MASTER SHIFT (Sama seperti sebelumnya)          -->
+    <!-- DIALOG: MASTER SHIFT                                    -->
     <!-- ======================================================= -->
     <v-dialog v-model="dialog" max-width="550px" persistent scrollable>
       <v-card rounded="xl" color="white">
@@ -133,6 +133,13 @@
         </v-card-title>
         
         <v-card-text class="pa-6">
+          <!-- AUDITOR SHIFT -->
+          <div class="mb-4" v-if="shiftAuditor.length > 0">
+            <v-alert v-for="(warn, idx) in shiftAuditor" :key="idx" :type="warn.type" variant="tonal" density="compact" class="mb-2 text-caption font-weight-medium">
+              {{ warn.text }}
+            </v-alert>
+          </div>
+
           <v-form @submit.prevent="saveShift">
             <v-text-field v-model="form.nama_shift" label="Nama Shift (Misal: Pagi, Malam, Part-Time)" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-4" hide-details="auto"></v-text-field>
             <v-row>
@@ -187,6 +194,13 @@
                 *Ubah durasi siklus untuk menambah atau mengurangi baris jadwal harian di bawah.
               </div>
             </v-card>
+
+            <!-- AUDITOR POLA ROTASI -->
+            <div class="mb-4" v-if="patternAuditor.length > 0">
+              <v-alert v-for="(warn, idx) in patternAuditor" :key="idx" :type="warn.type" variant="tonal" density="compact" class="mb-2 text-caption font-weight-medium">
+                {{ warn.text }}
+              </v-alert>
+            </div>
 
             <!-- BUILDER JADWAL HARIAN -->
             <div class="font-weight-bold text-indigo-darken-3 mb-2 d-flex align-center">
@@ -249,7 +263,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, computed } from 'vue'
 import { db } from '../../firebase'
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
@@ -269,6 +283,34 @@ const form = ref({
   nama_shift: '', jam_masuk: '08:00', jam_pulang: '16:00', toleransi: 15, lintas_hari: false 
 })
 
+// === SMART AUDITOR: MASTER SHIFT ===
+const shiftAuditor = computed(() => {
+  const warnings = []
+  if (!form.value.jam_masuk || !form.value.jam_pulang) return warnings
+
+  const [mH, mM] = form.value.jam_masuk.split(':').map(Number)
+  const [pH, pM] = form.value.jam_pulang.split(':').map(Number)
+
+  let masukMin = mH * 60 + mM
+  let pulangMin = pH * 60 + pM
+
+  if (form.value.lintas_hari || pulangMin < masukMin) pulangMin += 24 * 60
+
+  const durasiJam = (pulangMin - masukMin) / 60
+
+  // UU Istirahat
+  if (durasiJam > 4) {
+    warnings.push({ type: 'info', text: `Durasi Shift: ${durasiJam.toFixed(1)} Jam. Sesuai UU, wajib berikan waktu istirahat min. 30 menit (di luar jam kerja) setelah 4 jam bekerja terus-menerus.` })
+  }
+
+  // UU Perlindungan Pekerja Malam (Pukul 23:00 - 07:00)
+  if (form.value.lintas_hari || mH >= 23 || mH < 7 || pH < 7 || (pH === 7 && pM === 0)) {
+    warnings.push({ type: 'warning', text: 'Peringatan UU (Pasal 76): Shift Malam terdeteksi. Dilarang mempekerjakan perempuan hamil/di bawah 18 tahun, serta wajib sedia makan/minum bergizi jika menyentuh 23:00 - 05:00.' })
+  }
+
+  return warnings
+})
+
 // ==========================================
 // STATE: POLA ROTASI (ROSTER)
 // ==========================================
@@ -280,37 +322,101 @@ const patternsList = ref([])
 
 const patternForm = ref({
   nama_pola: '',
-  siklus_hari: 7, // Default 1 Minggu
+  siklus_hari: 7, 
   jadwal_harian: []
 })
 
-// Mengatur array jadwal_harian secara dinamis jika siklus_hari dirubah oleh user
 watch(() => patternForm.value.siklus_hari, (newVal) => {
   if (!newVal || newVal < 1) return;
   const current = [...patternForm.value.jadwal_harian]
   if (newVal > current.length) {
-    // Tambah baris baru
     for (let i = current.length; i < newVal; i++) {
       current.push({ hari_ke: i + 1, shift_id: null, is_libur: false })
     }
   } else if (newVal < current.length) {
-    // Potong baris berlebih
     current.length = newVal
   }
   patternForm.value.jadwal_harian = current
 }, { immediate: true })
 
+// === SMART AUDITOR: POLA ROTASI MINGGUAN ===
+const patternAuditor = computed(() => {
+  const warnings = []
+  let totalMenitSiklus = 0
+  let maxConsecutiveWork = 0
+  let currentConsecutive = 0
+  let isFullWork = true
+
+  // Loop menghitung total durasi & hari berurutan
+  patternForm.value.jadwal_harian.forEach(day => {
+    if (day.is_libur) {
+      currentConsecutive = 0
+      isFullWork = false
+    } else {
+      currentConsecutive++
+      if (currentConsecutive > maxConsecutiveWork) maxConsecutiveWork = currentConsecutive
+
+      if (day.shift_id) {
+        const shift = shiftsList.value.find(s => s.id === day.shift_id)
+        if (shift) {
+          const [mH, mM] = shift.jam_masuk.split(':').map(Number)
+          const [pH, pM] = shift.jam_pulang.split(':').map(Number)
+          let m = mH * 60 + mM
+          let p = pH * 60 + pM
+          if (shift.lintas_hari || p < m) p += 24 * 60
+          
+          // Pengurangan Istirahat Otomatis: Jika kerja > 4 jam, asumsikan potong istirahat 1 jam
+          let durasi = p - m
+          if (durasi > 4 * 60) durasi -= 60 
+          
+          totalMenitSiklus += durasi
+        }
+      }
+    }
+  })
+
+  // Evaluasi Pelanggaran Hari Libur (Overlap Awal & Akhir Siklus)
+  if (isFullWork) {
+    warnings.push({ type: 'error', text: `Pelanggaran UU: Siklus tidak memiliki hari libur sama sekali.` })
+  } else if (maxConsecutiveWork > 6) {
+    warnings.push({ type: 'error', text: `Pelanggaran UU: Ditemukan ${maxConsecutiveWork} hari kerja berturut-turut. Pekerja wajib mendapat istirahat min. 1 hari setelah 6 hari kerja.` })
+  } else {
+    // Mengecek persilangan antar Loop (Akhir siklus kerja, Awal siklus kerja)
+    let startWork = 0; let endWork = 0;
+    for(let i=0; i<patternForm.value.jadwal_harian.length; i++) {
+      if(!patternForm.value.jadwal_harian[i].is_libur) startWork++; else break;
+    }
+    for(let i=patternForm.value.jadwal_harian.length-1; i>=0; i--) {
+      if(!patternForm.value.jadwal_harian[i].is_libur) endWork++; else break;
+    }
+    if (startWork + endWork > 6) {
+      warnings.push({ type: 'error', text: `Pelanggaran UU: Saat siklus berulang (Looping), karyawan akan bekerja ${startWork + endWork} hari berturut-turut tanpa libur.` })
+    }
+  }
+
+  // Evaluasi 40 Jam / Minggu
+  // Rumus: (Total Jam Siklus / Jumlah Hari Siklus) * 7 Hari
+  const avgMenitPerMinggu = (totalMenitSiklus / patternForm.value.siklus_hari) * 7
+  const avgJamPerMinggu = avgMenitPerMinggu / 60
+
+  if (avgJamPerMinggu > 40) {
+    warnings.push({ type: 'error', text: `Pelanggaran UU (PP 35/2021): Rata-rata kerja ${avgJamPerMinggu.toFixed(1)} jam/minggu (Batas Maksimal 40 Jam/minggu). Kelebihan waktu dihitung sebagai waktu Lembur.` })
+  } else if (avgJamPerMinggu > 0) {
+    warnings.push({ type: 'success', text: `Kepatuhan Hukum: Rata-rata jam kerja ${avgJamPerMinggu.toFixed(1)} jam/minggu (Sesuai Standar < 40 Jam). Waktu istirahat otomatis dipotong 1 jam/hari.` })
+  }
+
+  return warnings
+})
+
 
 onMounted(() => {
   const tenantId = authState.value.tenantId
   
-  // 1. Tarik Data Master Shift
   onSnapshot(collection(db, 'tenants', tenantId, 'master_shifts'), (snapshot) => {
     const loaded = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
     shiftsList.value = loaded.sort((a, b) => a.jam_masuk.localeCompare(b.jam_masuk))
   })
 
-  // 2. Tarik Data Pola Rotasi
   onSnapshot(collection(db, 'tenants', tenantId, 'shift_patterns'), (snapshot) => {
     patternsList.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
   })
@@ -354,7 +460,6 @@ const deleteShift = async (id) => {
   if (confirm('Yakin ingin menghapus template shift ini?')) await deleteDoc(doc(db, 'tenants', authState.value.tenantId, 'master_shifts', id))
 }
 
-
 // ==========================================
 // FUNGSI: POLA ROTASI (ROSTER)
 // ==========================================
@@ -369,7 +474,6 @@ const openPatternDialog = () => {
 
 const editPattern = (pattern) => {
   isEditingPattern.value = true; editPatternId.value = pattern.id;
-  // Deep copy array jadwal
   patternForm.value = {
     nama_pola: pattern.nama_pola,
     siklus_hari: pattern.siklus_hari,
@@ -379,20 +483,16 @@ const editPattern = (pattern) => {
 }
 
 const closePatternDialog = () => patternDialog.value = false
+
 const handleLiburChange = (day) => {
-  if (day.is_libur) {
-    day.shift_id = null;
-  }
+  if (day.is_libur) day.shift_id = null;
 }
 
 const savePattern = async () => {
   if (!patternForm.value.nama_pola) return alert('Nama Pola Rotasi wajib diisi!')
   
-  // Validasi pastikan hari kerja memiliki shift
   const invalidDay = patternForm.value.jadwal_harian.find(d => !d.is_libur && !d.shift_id)
-  if (invalidDay) {
-    return alert(`Hari ke-${invalidDay.hari_ke} tidak diatur sebagai libur, jadi wajib memilih Shift Masuk!`)
-  }
+  if (invalidDay) return alert(`Hari ke-${invalidDay.hari_ke} tidak diatur sebagai libur, jadi wajib memilih Shift Masuk!`)
 
   isSavingPattern.value = true
   try {
@@ -415,11 +515,9 @@ const deletePattern = async (id) => {
   }
 } 
 
-// Fungsi pembantu untuk pratinjau tabel Roster
 const getShiftCode = (shiftId) => {
   if (!shiftId) return '-'
   const shift = shiftsList.value.find(s => s.id === shiftId)
-  // Ambil kata pertama untuk label singkat (Misal: "Normal Shift 1" -> "Normal")
   return shift ? shift.nama_shift.split(' ')[0] : 'Err'
 }
 </script>
