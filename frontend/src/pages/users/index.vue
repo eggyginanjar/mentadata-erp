@@ -80,7 +80,7 @@
 
     <!-- Dialog Form (HR Master Data) -->
     <v-dialog v-model="dialog" max-width="850px" persistent scrollable>
-      <v-card rounded="xl" color="grey-lighten-4" max-height="90vh" class="d-flex flex-column">
+      <v-card rounded="xl" color="white" max-height="90vh" class="d-flex flex-column">
         <v-card-title class="pa-5 bg-teal-darken-3 text-white d-flex align-center flex-shrink-0">
           <v-icon start>{{ isEditing ? 'mdi-account-edit' : 'mdi-card-account-details-outline' }}</v-icon>
           <span class="font-weight-bold">{{ isEditing ? 'Edit Profil Karyawan' : 'Form Pendaftaran Karyawan' }}</span>
@@ -88,24 +88,24 @@
           <v-btn icon="mdi-close" variant="text" color="white" @click="closeDialog"></v-btn>
         </v-card-title>
         
-        <v-card-text class="pa-4 flex-grow-1 overflow-y-auto">
+        <v-card-text class="pa-4 flex-grow-1 overflow-y-auto bg-grey-lighten-4">
           <v-form @submit.prevent="saveUser">
             <!-- SEGMEN 1: DATA PERSONAL & SISTEM -->
-            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg">
+            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
               <div class="font-weight-bold text-teal-darken-3 mb-4 d-flex align-center">
                 <v-icon start size="small">mdi-account-circle</v-icon> Data Personal & Akses Sistem
               </div>
               <v-row dense>
                 <v-col cols="12" sm="6" md="4">
-                  <v-text-field v-model="form.nik" label="NIK / ID Karyawan" hint="Dihasilkan Otomatis" persistent-hint variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3"></v-text-field>
+                  <v-text-field v-model="form.nik" label="NIK / ID Karyawan" hint="Dihasilkan Otomatis" persistent-hint variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" bg-color="white"></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="6" md="4">
-                  <v-text-field v-model="form.nama" label="Nama Lengkap" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details></v-text-field>
+                  <v-text-field v-model="form.nama" label="Nama Lengkap" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details bg-color="white"></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="12" md="4">
                   <v-text-field 
                     v-model="form.email" label="Email (Untuk Login)" type="email" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details
-                    :disabled="isEditing" :class="isEditing ? 'bg-grey-lighten-4' : ''"
+                    :disabled="isEditing" :class="isEditing ? 'text-grey-darken-1' : ''" :bg-color="isEditing ? 'grey-lighten-3' : 'white'"
                   ></v-text-field>
                 </v-col>
               </v-row>
@@ -114,19 +114,19 @@
                 <v-col cols="12" :sm="isBranchRole ? 6 : 12">
                   <v-select 
                     v-model="form.role" :items="roleOptions" label="Jabatan (Akses Menu)" variant="outlined" density="comfortable" color="teal-darken-3" hide-details
-                    :disabled="form.role === 'UMKM Owner' && isEditing" :class="(form.role === 'UMKM Owner' && isEditing) ? 'bg-grey-lighten-4' : ''"
+                    :disabled="form.role === 'UMKM Owner' && isEditing" :class="(form.role === 'UMKM Owner' && isEditing) ? 'text-grey-darken-1' : ''" :bg-color="(form.role === 'UMKM Owner' && isEditing) ? 'grey-lighten-3' : 'white'"
                   ></v-select>
                 </v-col>
                 <v-col cols="12" sm="6" v-if="isBranchRole">
                   <v-select 
-                    v-model="form.branch_id" :items="branchesList" item-title="nama_cabang" item-value="id" label="Penempatan Cabang" variant="outlined" density="comfortable" color="teal-darken-3" hide-details
+                    v-model="form.branch_id" :items="branchesList" item-title="nama_cabang" item-value="id" label="Penempatan Cabang" variant="outlined" density="comfortable" color="teal-darken-3" hide-details bg-color="white"
                   ></v-select>
                 </v-col>
               </v-row>
             </v-card>
 
-            <!-- SEGMEN 2: WAKTU KERJA & PENJADWALAN (BARU) -->
-            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg">
+            <!-- SEGMEN 2: WAKTU KERJA & PENJADWALAN -->
+            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
               <div class="font-weight-bold text-indigo-darken-3 mb-4 d-flex align-center">
                 <v-icon start size="small">mdi-calendar-clock</v-icon> Waktu Kerja & Penjadwalan
               </div>
@@ -138,11 +138,10 @@
                     item-title="nama_shift"
                     item-value="id"
                     label="Template Shift Default"
-                    variant="outlined" density="comfortable" color="indigo-darken-3" class="mb-3"
+                    variant="outlined" density="comfortable" color="indigo-darken-3" class="mb-3" bg-color="white"
                     hint="Jam kerja baku karyawan jika tidak ada jadwal rotasi." persistent-hint
                   >
                     <template v-slot:item="{ props, item }">
-                      <!-- PERBAIKAN DI BARIS INI: Tambahkan pengecekan item?.raw -->
                       <v-list-item 
                         v-bind="props" 
                         :subtitle="item?.raw ? `${item.raw.jam_masuk} - ${item.raw.jam_pulang}` : ''"
@@ -156,7 +155,7 @@
                     :items="['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu']"
                     label="Hari Libur Rutin"
                     multiple chips closable-chips
-                    variant="outlined" density="comfortable" color="indigo-darken-3" class="mb-3"
+                    variant="outlined" density="comfortable" color="indigo-darken-3" class="mb-3" bg-color="white"
                     hint="Hari istirahat mingguan baku." persistent-hint
                   ></v-select>
                 </v-col>
@@ -164,30 +163,30 @@
             </v-card>
 
             <!-- SEGMEN 3: KOMPONEN GAJI (PAYROLL) -->
-            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg">
+            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
               <div class="font-weight-bold text-orange-darken-3 mb-4 d-flex align-center">
                 <v-icon start size="small">mdi-cash-multiple</v-icon> Komponen Gaji (Payroll)
               </div>
               <v-row dense>
                 <v-col cols="12" sm="6">
                   <v-select 
-                    v-model="form.tipe_gaji" :items="['Bulanan', 'Harian', 'Mingguan']" label="Sistem Pembayaran" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details
+                    v-model="form.tipe_gaji" :items="['Bulanan', 'Harian', 'Mingguan']" label="Sistem Pembayaran" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details bg-color="white"
                   ></v-select>
                 </v-col>
                 <v-col cols="12" sm="6">
-                  <v-text-field v-model.number="form.gaji_pokok" label="Gaji Pokok Dasar" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details></v-text-field>
+                  <v-text-field v-model.number="form.gaji_pokok" label="Gaji Pokok Dasar" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details bg-color="white"></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="6">
-                  <v-text-field v-model.number="form.uang_makan" label="Uang Makan Harian (Opsional)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details></v-text-field>
+                  <v-text-field v-model.number="form.uang_makan" label="Uang Makan Harian (Opsional)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details bg-color="white"></v-text-field>
                 </v-col>
                 <v-col cols="12" sm="6">
-                  <v-text-field v-model.number="form.uang_transport" label="Uang Transport Harian (Opsional)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details></v-text-field>
+                  <v-text-field v-model.number="form.uang_transport" label="Uang Transport Harian (Opsional)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" class="mb-3" hide-details bg-color="white"></v-text-field>
                 </v-col>
               </v-row>
             </v-card>
 
             <!-- SEGMEN 4: STATUS AKUN -->
-            <v-card class="pa-5 border-sm" elevation="0" rounded="lg" v-if="isEditing && form.role !== 'UMKM Owner'">
+            <v-card class="pa-5 border-sm" elevation="0" rounded="lg" color="white" v-if="isEditing && form.role !== 'UMKM Owner'">
               <v-switch 
                 v-model="form.aktif" 
                 :label="form.aktif ? 'Akun & Status HR Aktif' : 'Karyawan Dinonaktifkan (Resign/Diberhentikan)'" 
