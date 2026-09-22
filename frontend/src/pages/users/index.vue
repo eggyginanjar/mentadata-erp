@@ -74,120 +74,188 @@
       </v-table>
     </v-card>
 
-    <!-- Dialog Form Karyawan -->
+    <!-- Dialog Form Karyawan (Sistem Tab) -->
     <v-dialog v-model="dialog" max-width="900px" persistent scrollable>
-      <v-card rounded="xl" color="white" max-height="90vh" class="d-flex flex-column">
+      <v-card rounded="xl" color="white" max-height="95vh" class="d-flex flex-column">
+        
+        <!-- Header Dialog -->
         <v-card-title class="pa-5 bg-teal-darken-3 text-white d-flex align-center flex-shrink-0">
           <v-icon start>{{ isEditing ? 'mdi-account-edit' : 'mdi-card-account-details-outline' }}</v-icon>
-          <span class="font-weight-bold">{{ isEditing ? 'Edit Profil Karyawan' : 'Pendaftaran Karyawan' }}</span>
+          <span class="font-weight-bold">{{ isEditing ? 'Edit Profil Karyawan' : 'Pendaftaran Karyawan Baru' }}</span>
           <v-spacer></v-spacer>
           <v-btn icon="mdi-close" variant="text" color="white" @click="closeDialog"></v-btn>
         </v-card-title>
+
+        <!-- Navigasi Tab -->
+        <v-tabs v-model="tabDialog" color="teal-darken-3" bg-color="white" grow class="border-b">
+          <v-tab value="biodata" class="text-none font-weight-bold"><v-icon start>mdi-badge-account-outline</v-icon> Biodata Diri</v-tab>
+          <v-tab value="pekerjaan" class="text-none font-weight-bold"><v-icon start>mdi-briefcase-outline</v-icon> Pekerjaan & Roster</v-tab>
+          <v-tab value="payroll" class="text-none font-weight-bold"><v-icon start>mdi-cash-multiple</v-icon> Struktur Gaji</v-tab>
+        </v-tabs>
         
-        <v-card-text class="pa-4 flex-grow-1 overflow-y-auto bg-grey-lighten-4">
+        <!-- Konten Dialog berdasar Tab -->
+        <v-card-text class="pa-0 bg-grey-lighten-4 flex-grow-1 overflow-y-auto">
           <v-form @submit.prevent="saveUser">
-            <!-- SEGMEN 1: DATA PERSONAL -->
-            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
-              <div class="font-weight-bold text-teal-darken-3 mb-4 d-flex align-center">
-                <v-icon start size="small">mdi-account-circle</v-icon> Data Personal & Akses Sistem
-              </div>
-              <v-row dense>
-                <v-col cols="12" sm="6" md="4">
-                  <v-text-field v-model="form.nik" label="NIK / ID Karyawan" hint="Dihasilkan Otomatis" persistent-hint variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" bg-color="white"></v-text-field>
-                </v-col>
-                <v-col cols="12" sm="6" md="4">
-                  <v-text-field v-model="form.nama" label="Nama Lengkap" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details bg-color="white"></v-text-field>
-                </v-col>
-                <v-col cols="12" sm="12" md="4">
-                  <v-text-field v-model="form.email" label="Email (Untuk Login)" type="email" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details :disabled="isEditing" :class="isEditing ? 'text-grey-darken-1' : ''" :bg-color="isEditing ? 'grey-lighten-3' : 'white'"></v-text-field>
-                </v-col>
-              </v-row>
-              <v-row dense>
-                <v-col cols="12" :sm="isBranchRole ? 6 : 12">
-                  <v-select v-model="form.role" :items="roleOptions" label="Jabatan (Akses Menu)" variant="outlined" density="comfortable" color="teal-darken-3" hide-details :disabled="form.role === 'UMKM Owner' && isEditing" :class="(form.role === 'UMKM Owner' && isEditing) ? 'text-grey-darken-1' : ''" :bg-color="(form.role === 'UMKM Owner' && isEditing) ? 'grey-lighten-3' : 'white'"></v-select>
-                </v-col>
-                <v-col cols="12" sm="6" v-if="isBranchRole">
-                  <v-select v-model="form.branch_id" :items="branchesList" item-title="nama_cabang" item-value="id" label="Penempatan Cabang" variant="outlined" density="comfortable" color="teal-darken-3" hide-details bg-color="white"></v-select>
-                </v-col>
-              </v-row>
-            </v-card>
+            <v-window v-model="tabDialog">
+              
+              <!-- ===================================== -->
+              <!-- TAB 1: BIODATA & IDENTITAS KARYAWAN   -->
+              <!-- ===================================== -->
+              <v-window-item value="biodata" class="pa-6">
+                <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
+                  <div class="font-weight-bold text-teal-darken-3 mb-4 d-flex align-center">
+                    <v-icon start size="small">mdi-card-account-details-star</v-icon> Identitas Utama & BPJS
+                  </div>
+                  <v-row dense>
+                    <v-col cols="12" md="6">
+                      <v-text-field v-model="form.nama" label="Nama Lengkap (Sesuai KTP)" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" bg-color="white"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" md="6">
+                      <v-text-field v-model="form.no_ktp" label="Nomor KTP (NIK Kependudukan)" type="number" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" bg-color="white" hint="16 Digit Angka" persistent-hint></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-row dense>
+                    <v-col cols="12" sm="6">
+                      <v-select v-model="form.gender" :items="['Laki-laki', 'Perempuan']" label="Jenis Kelamin" variant="outlined" density="comfortable" color="teal-darken-3" hide-details bg-color="white"></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-text-field v-model="form.no_hp" label="Nomor Handphone / WhatsApp" type="tel" variant="outlined" density="comfortable" color="teal-darken-3" hide-details bg-color="white"></v-text-field>
+                    </v-col>
+                  </v-row>
+                </v-card>
 
-            <!-- SEGMEN 2: WAKTU KERJA (Pola Rotasi Baru) -->
-            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white" v-if="form.role !== 'UMKM Owner'">
-              <div class="font-weight-bold text-indigo-darken-3 mb-4 d-flex align-center">
-                <v-icon start size="small">mdi-calendar-sync</v-icon> Penjadwalan & Rotasi Shift
-              </div>
-              <v-row dense>
-                <v-col cols="12" sm="6">
-                  <v-select
-                    v-model="form.shift_pattern_id" :items="patternsList" item-title="nama_pola" item-value="id"
-                    label="Pilih Pola Rotasi (Roster)" variant="outlined" density="comfortable" color="indigo-darken-3" bg-color="white"
-                    hint="Aturan jadwal berulang yang berlaku untuk karyawan ini." persistent-hint
-                  ></v-select>
-                </v-col>
-                <v-col cols="12" sm="6">
-                  <v-text-field
-                    v-model="form.anchor_date" label="Tanggal Mulai Berlaku (Jangkar Hari ke-1)" type="date"
-                    variant="outlined" density="comfortable" color="indigo-darken-3" bg-color="white"
-                    hint="Tanggal ini akan dihitung sebagai Hari ke-1 dalam siklus pola rotasi." persistent-hint
-                  ></v-text-field>
-                </v-col>
-              </v-row>
-            </v-card>
+                <v-card class="pa-5 border-sm" elevation="0" rounded="lg" color="white">
+                  <div class="font-weight-bold text-blue-grey-darken-3 mb-4 d-flex align-center">
+                    <v-icon start size="small">mdi-home-account</v-icon> Kelahiran, Pajak (PTKP) & Alamat
+                  </div>
+                  <v-row dense>
+                    <v-col cols="12" sm="6">
+                      <v-text-field v-model="form.tempat_lahir" label="Tempat Lahir" variant="outlined" density="comfortable" color="blue-grey-darken-2" hide-details bg-color="white" class="mb-3"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-text-field v-model="form.tanggal_lahir" label="Tanggal Lahir" type="date" variant="outlined" density="comfortable" color="blue-grey-darken-2" hide-details bg-color="white" class="mb-3"></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-row dense>
+                    <v-col cols="12" sm="6">
+                      <v-select v-model="form.status_nikah" :items="['Lajang (TK)', 'Menikah (K)']" label="Status Pernikahan" variant="outlined" density="comfortable" color="blue-grey-darken-2" hide-details bg-color="white" class="mb-3"></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-select v-model.number="form.jml_tanggungan" :items="[0, 1, 2, 3]" label="Jumlah Anak / Tanggungan" variant="outlined" density="comfortable" color="blue-grey-darken-2" hide-details bg-color="white" class="mb-3" hint="Maksimal 3 untuk perhitungan PPh21 (PTKP)." persistent-hint></v-select>
+                    </v-col>
+                  </v-row>
+                  <v-textarea v-model="form.alamat" label="Alamat Domisili Lengkap" variant="outlined" density="comfortable" color="blue-grey-darken-2" rows="2" hide-details bg-color="white" class="mt-2"></v-textarea>
+                </v-card>
+              </v-window-item>
 
-            <!-- SEGMEN 3: KOMPONEN GAJI DINAMIS (Payroll Baru) -->
-            <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
-              <div class="font-weight-bold text-orange-darken-3 mb-4 d-flex align-center">
-                <v-icon start size="small">mdi-cash-multiple</v-icon> Struktur & Komponen Gaji
-              </div>
+              <!-- ===================================== -->
+              <!-- TAB 2: PEKERJAAN & PENJADWALAN        -->
+              <!-- ===================================== -->
+              <v-window-item value="pekerjaan" class="pa-6">
+                <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white">
+                  <div class="font-weight-bold text-teal-darken-3 mb-4 d-flex align-center">
+                    <v-icon start size="small">mdi-badge-account-horizontal</v-icon> Kredensial Sistem & Jabatan
+                  </div>
+                  <v-row dense>
+                    <v-col cols="12" sm="6">
+                      <v-text-field v-model="form.nik" label="NIK / ID Karyawan (Sistem)" hint="Dihasilkan Otomatis" persistent-hint variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" bg-color="white"></v-text-field>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-text-field v-model="form.email" label="Email (Untuk Login)" type="email" variant="outlined" density="comfortable" color="teal-darken-3" class="mb-3" hide-details :disabled="isEditing" :class="isEditing ? 'text-grey-darken-1' : ''" :bg-color="isEditing ? 'grey-lighten-3' : 'white'"></v-text-field>
+                    </v-col>
+                  </v-row>
+                  <v-row dense>
+                    <v-col cols="12" :sm="isBranchRole ? 6 : 12">
+                      <v-select v-model="form.role" :items="roleOptions" label="Jabatan (Akses Menu)" variant="outlined" density="comfortable" color="teal-darken-3" hide-details :disabled="form.role === 'UMKM Owner' && isEditing" :class="(form.role === 'UMKM Owner' && isEditing) ? 'text-grey-darken-1' : ''" :bg-color="(form.role === 'UMKM Owner' && isEditing) ? 'grey-lighten-3' : 'white'"></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="6" v-if="isBranchRole">
+                      <v-select v-model="form.branch_id" :items="branchesList" item-title="nama_cabang" item-value="id" label="Penempatan Cabang" variant="outlined" density="comfortable" color="teal-darken-3" hide-details bg-color="white"></v-select>
+                    </v-col>
+                  </v-row>
+                </v-card>
 
-              <!-- AUDITOR PP 36/2021 -->
-              <v-alert v-if="auditorGaji.show" :type="auditorGaji.isSafe ? 'success' : 'error'" variant="tonal" density="compact" class="mb-4 text-caption font-weight-medium">
-                {{ auditorGaji.message }}
-              </v-alert>
+                <v-card class="pa-5 mb-4 border-sm" elevation="0" rounded="lg" color="white" v-if="form.role !== 'UMKM Owner'">
+                  <div class="font-weight-bold text-indigo-darken-3 mb-4 d-flex align-center">
+                    <v-icon start size="small">mdi-calendar-sync</v-icon> Penjadwalan & Rotasi Shift
+                  </div>
+                  <v-row dense>
+                    <v-col cols="12" sm="6">
+                      <v-select
+                        v-model="form.shift_pattern_id" :items="patternsList" item-title="nama_pola" item-value="id"
+                        label="Pilih Pola Rotasi (Roster)" variant="outlined" density="comfortable" color="indigo-darken-3" bg-color="white"
+                        hint="Aturan jadwal berulang yang berlaku untuk karyawan ini." persistent-hint
+                      ></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="6">
+                      <v-text-field
+                        v-model="form.anchor_date" label="Tanggal Mulai Berlaku (Jangkar Hari ke-1)" type="date"
+                        variant="outlined" density="comfortable" color="indigo-darken-3" bg-color="white"
+                        hint="Tanggal ini akan dihitung sebagai Hari ke-1 dalam siklus pola rotasi." persistent-hint
+                      ></v-text-field>
+                    </v-col>
+                  </v-row>
+                </v-card>
 
-              <v-row dense>
-                <v-col cols="12" sm="4">
-                  <v-select v-model="form.tipe_gaji" :items="['Bulanan', 'Harian', 'Mingguan']" label="Sistem Bayar" variant="outlined" density="comfortable" color="orange-darken-3" hide-details bg-color="white"></v-select>
-                </v-col>
-                <v-col cols="12" sm="8">
-                  <v-text-field v-model.number="form.gaji_pokok" label="Gaji Pokok Dasar (Wajib)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" hide-details bg-color="white"></v-text-field>
-                </v-col>
-              </v-row>
+                <v-card class="pa-5 border-sm" elevation="0" rounded="lg" color="white" v-if="isEditing && form.role !== 'UMKM Owner'">
+                  <v-switch v-model="form.aktif" :label="form.aktif ? 'Status Karyawan & Akun Aktif' : 'Karyawan Dinonaktifkan (Resign/Diberhentikan)'" :color="form.aktif ? 'success' : 'error'" hide-details density="compact"></v-switch>
+                </v-card>
+              </v-window-item>
 
-              <!-- Builder Komponen Gaji Tambahan -->
-              <div class="mt-5 mb-2 font-weight-bold text-blue-grey-darken-2 d-flex align-center justify-space-between">
-                <span>Komponen Gaji Tambahan (Tunjangan/Potongan)</span>
-                <v-btn color="orange-darken-3" size="small" variant="tonal" prepend-icon="mdi-plus" @click="addKomponen">Tambah</v-btn>
-              </div>
+              <!-- ===================================== -->
+              <!-- TAB 3: STRUKTUR PAYROLL & AUDITOR     -->
+              <!-- ===================================== -->
+              <v-window-item value="payroll" class="pa-6">
+                <v-card class="pa-5 border-sm" elevation="0" rounded="lg" color="white">
+                  <div class="font-weight-bold text-orange-darken-3 mb-4 d-flex align-center">
+                    <v-icon start size="small">mdi-cash-multiple</v-icon> Struktur Gaji Pokok & Sistem Bayar
+                  </div>
 
-              <div v-for="(item, index) in form.komponen_gaji" :key="index" class="d-flex align-center gap-2 mb-2">
-                <v-select
-                  v-model="item.id_komponen" :items="masterComponents" item-title="nama_komponen" item-value="id"
-                  label="Pilih Komponen" variant="outlined" density="compact" hide-details bg-color="white" style="flex: 2;"
-                >
-                  <template v-slot:item="{ props, item }">
-                    <v-list-item v-bind="props" :subtitle="item?.raw?.kategori"></v-list-item>
-                  </template>
-                </v-select>
-                <v-text-field
-                  v-model.number="item.nominal" label="Nominal" prefix="Rp" type="number"
-                  variant="outlined" density="compact" hide-details bg-color="white" style="flex: 1;"
-                ></v-text-field>
-                <v-btn icon="mdi-close" variant="text" color="error" size="small" @click="removeKomponen(index)"></v-btn>
-              </div>
-              <div v-if="form.komponen_gaji.length === 0" class="text-caption text-grey font-italic text-center py-2 border border-dashed rounded bg-grey-lighten-4">
-                Belum ada tunjangan/potongan tambahan yang disematkan.
-              </div>
-            </v-card>
+                  <!-- AUDITOR PP 36/2021 -->
+                  <v-alert v-if="auditorGaji.show" :type="auditorGaji.isSafe ? 'success' : 'error'" variant="tonal" density="compact" class="mb-4 text-caption font-weight-medium">
+                    {{ auditorGaji.message }}
+                  </v-alert>
 
-            <!-- SEGMEN 4: STATUS AKUN -->
-            <v-card class="pa-5 border-sm" elevation="0" rounded="lg" color="white" v-if="isEditing && form.role !== 'UMKM Owner'">
-              <v-switch v-model="form.aktif" :label="form.aktif ? 'Akun Aktif' : 'Karyawan Nonaktif (Resign/Diberhentikan)'" :color="form.aktif ? 'success' : 'error'" hide-details density="compact"></v-switch>
-            </v-card>
+                  <v-row dense>
+                    <v-col cols="12" sm="4">
+                      <v-select v-model="form.tipe_gaji" :items="['Bulanan', 'Harian', 'Mingguan']" label="Sistem Bayar" variant="outlined" density="comfortable" color="orange-darken-3" hide-details bg-color="white"></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="8">
+                      <v-text-field v-model.number="form.gaji_pokok" label="Gaji Pokok Dasar (Wajib)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" hide-details bg-color="white"></v-text-field>
+                    </v-col>
+                  </v-row>
+
+                  <!-- Builder Komponen Gaji Tambahan -->
+                  <div class="mt-6 mb-2 font-weight-bold text-blue-grey-darken-2 d-flex align-center justify-space-between border-b pb-2">
+                    <span>Komponen Gaji Tambahan (Tunjangan/Potongan)</span>
+                    <v-btn color="orange-darken-3" size="small" variant="tonal" prepend-icon="mdi-plus" @click="addKomponen">Tambah Elemen</v-btn>
+                  </div>
+
+                  <div v-for="(item, index) in form.komponen_gaji" :key="index" class="d-flex align-center gap-2 mb-2 mt-3">
+                    <v-select
+                      v-model="item.id_komponen" :items="masterComponents" item-title="nama_komponen" item-value="id"
+                      label="Pilih Komponen" variant="outlined" density="compact" hide-details bg-color="white" style="flex: 2;"
+                    >
+                      <template v-slot:item="{ props, item }">
+                        <v-list-item v-bind="props" :subtitle="item?.raw?.kategori"></v-list-item>
+                      </template>
+                    </v-select>
+                    <v-text-field
+                      v-model.number="item.nominal" label="Nominal" prefix="Rp" type="number"
+                      variant="outlined" density="compact" hide-details bg-color="white" style="flex: 1;"
+                    ></v-text-field>
+                    <v-btn icon="mdi-close" variant="text" color="error" size="small" @click="removeKomponen(index)"></v-btn>
+                  </div>
+                  <div v-if="form.komponen_gaji.length === 0" class="text-caption text-grey font-italic text-center py-4 border border-dashed rounded bg-grey-lighten-4 mt-3">
+                    Belum ada tunjangan (seperti Uang Makan, Jabatan) atau potongan yang disematkan untuk karyawan ini.
+                  </div>
+                </v-card>
+              </v-window-item>
+
+            </v-window>
           </v-form>
         </v-card-text>
         
+        <!-- Action Footer (Tetap di Bawah Tab) -->
         <v-card-actions class="pa-4 bg-white border-t flex-shrink-0">
           <v-spacer></v-spacer>
           <v-btn variant="text" color="blue-grey-darken-1" class="font-weight-bold text-none px-4" @click="closeDialog">Batal</v-btn>
@@ -210,6 +278,9 @@ import { db } from '../../firebase'
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
+// State untuk Navigasi Tab
+const tabDialog = ref('biodata')
+
 const dialog = ref(false)
 const isSaving = ref(false)
 const usersList = ref([])
@@ -219,14 +290,17 @@ const editId = ref(null)
 
 const customRoles = ref([]) 
 const branchesList = ref([])
-const patternsList = ref([]) // Pola Rotasi Shift
-const masterComponents = ref([]) // Master Komponen Gaji
+const patternsList = ref([]) 
+const masterComponents = ref([]) 
 
+// State Form Diperluas dengan Biodata
 const form = ref({ 
   nik: '', nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
+  no_ktp: '', gender: 'Laki-laki', tempat_lahir: '', tanggal_lahir: '', 
+  status_nikah: 'Lajang (TK)', jml_tanggungan: 0, no_hp: '', alamat: '',
   shift_pattern_id: null, anchor_date: '',
   tipe_gaji: 'Bulanan', gaji_pokok: 0,
-  komponen_gaji: [] // Format: [{ id_komponen: 'xx', nominal: 100000 }]
+  komponen_gaji: []
 })
 
 const roleOptions = computed(() => {
@@ -240,13 +314,11 @@ const roleOptions = computed(() => {
 const isBranchRole = computed(() => {
   if (!form.value.role) return false
   if (form.value.role === 'UMKM Owner') return false
-  // Pastikan pencarian case-insensitive jika perlu, atau sekadar perkuat pengecekan eksistensi
   const isCustom = customRoles.value.some(r => r.nama_peran === form.value.role)
-  // Jika bukan owner, kita asumsikan butuh cabang (kecuali Anda punya logika spesifik lain)
   return isCustom || form.value.role !== 'UMKM Owner'
 })
 
-// === AUDITOR PP 36 TAHUN 2021 (Aturan 75% Upah Pokok) ===
+// === AUDITOR PP 36 TAHUN 2021 ===
 const auditorGaji = computed(() => {
   if (form.value.role === 'UMKM Owner') return { show: false, isSafe: true }
 
@@ -283,7 +355,6 @@ const auditorGaji = computed(() => {
   }
 })
 
-
 onMounted(() => {
   const tenantId = authState.value.tenantId
 
@@ -296,11 +367,9 @@ onMounted(() => {
   onSnapshot(collection(db, 'tenants', tenantId, 'branches'), (snapshot) => {
     branchesList.value = snapshot.docs.map(doc => ({ id: doc.id, nama_cabang: doc.data().nama_cabang }))
   })
-  // Load Pola Rotasi (Roster)
   onSnapshot(collection(db, 'tenants', tenantId, 'shift_patterns'), (snapshot) => {
     patternsList.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
   })
-  // Load Master Komponen Gaji
   onSnapshot(collection(db, 'tenants', tenantId, 'master_payroll_components'), (snapshot) => {
     masterComponents.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
   })
@@ -323,18 +392,19 @@ const generateNIK = () => {
 }
 
 const openAddDialog = () => {
-  isEditing.value = false; editId.value = null;
+  isEditing.value = false; editId.value = null; tabDialog.value = 'biodata';
   form.value = { 
     nik: generateNIK(), nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
+    no_ktp: '', gender: 'Laki-laki', tempat_lahir: '', tanggal_lahir: '', 
+    status_nikah: 'Lajang (TK)', jml_tanggungan: 0, no_hp: '', alamat: '',
     shift_pattern_id: null, anchor_date: '', tipe_gaji: 'Bulanan', gaji_pokok: 0, komponen_gaji: []
   }
   dialog.value = true
 }
 
 const editUser = (user) => {
-  isEditing.value = true; editId.value = user.id;
+  isEditing.value = true; editId.value = user.id; tabDialog.value = 'biodata';
   
-  // Amankan array komponen gaji
   let safeKomponen = []
   if (user.komponen_gaji && Array.isArray(user.komponen_gaji)) {
     safeKomponen = JSON.parse(JSON.stringify(user.komponen_gaji))
@@ -347,6 +417,16 @@ const editUser = (user) => {
     role: user.role || 'Kasir', 
     branch_id: user.branch_id || null, 
     aktif: user.aktif !== undefined ? user.aktif : true,
+    
+    no_ktp: user.no_ktp || '', 
+    gender: user.gender || 'Laki-laki', 
+    tempat_lahir: user.tempat_lahir || '', 
+    tanggal_lahir: user.tanggal_lahir || '', 
+    status_nikah: user.status_nikah || 'Lajang (TK)', 
+    jml_tanggungan: user.jml_tanggungan || 0, 
+    no_hp: user.no_hp || '', 
+    alamat: user.alamat || '',
+
     shift_pattern_id: user.shift_pattern_id || null, 
     anchor_date: user.anchor_date || '',
     tipe_gaji: user.tipe_gaji || 'Bulanan', 
@@ -359,8 +439,14 @@ const editUser = (user) => {
 const closeDialog = () => dialog.value = false
 
 const saveUser = async () => {
-  if (!form.value.nama || !form.value.email) return alert('Nama dan Email wajib diisi!')
-  if (!auditorGaji.value.isSafe) return alert('Perbaiki proporsi Gaji Pokok terlebih dahulu sesuai aturan undang-undang!')
+  if (!form.value.nama || !form.value.email) {
+    tabDialog.value = 'biodata' // Lempar user kembali ke tab pertama jika belum diisi
+    return alert('Nama dan Email wajib diisi!')
+  }
+  if (!auditorGaji.value.isSafe) {
+    tabDialog.value = 'payroll' // Lempar user ke tab payroll jika melanggar
+    return alert('Perbaiki proporsi Gaji Pokok terlebih dahulu sesuai aturan undang-undang!')
+  }
 
   isSaving.value = true
   try {
@@ -368,11 +454,18 @@ const saveUser = async () => {
       nik: form.value.nik, nama: form.value.nama, email: form.value.email, role: form.value.role,
       branch_id: form.value.role === 'UMKM Owner' ? null : form.value.branch_id,
       aktif: form.value.aktif,
+      
+      // Save data biodata
+      no_ktp: form.value.no_ktp, gender: form.value.gender, 
+      tempat_lahir: form.value.tempat_lahir, tanggal_lahir: form.value.tanggal_lahir, 
+      status_nikah: form.value.status_nikah, jml_tanggungan: Number(form.value.jml_tanggungan), 
+      no_hp: form.value.no_hp, alamat: form.value.alamat,
+
       shift_pattern_id: form.value.shift_pattern_id,
       anchor_date: form.value.anchor_date,
       tipe_gaji: form.value.tipe_gaji,
       gaji_pokok: Number(form.value.gaji_pokok),
-      komponen_gaji: form.value.komponen_gaji.filter(k => k.id_komponen && k.nominal >= 0) // Bersihkan data kosong
+      komponen_gaji: form.value.komponen_gaji.filter(k => k.id_komponen && k.nominal >= 0) 
     }
 
     if (isEditing.value) await updateDoc(doc(db, 'tenants', authState.value.tenantId, 'users', editId.value), { ...userData, updated_at: serverTimestamp() })
