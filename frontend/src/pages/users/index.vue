@@ -192,7 +192,10 @@
           <v-spacer></v-spacer>
           <v-btn variant="text" color="blue-grey-darken-1" class="font-weight-bold text-none px-4" @click="closeDialog">Batal</v-btn>
           <!-- Tombol disable jika Auditor mendeteksi pelanggaran UU -->
-          <v-btn color="teal-darken-3" variant="elevated" rounded="lg" class="px-8 font-weight-bold text-none" @click="saveUser" :loading="isSaving" :disabled="!auditorGaji.isSafe">
+          <v-btn 
+            color="teal-darken-3" variant="elevated" rounded="lg" class="px-8 font-weight-bold text-none" 
+            @click="saveUser" :loading="isSaving" :disabled="!auditorGaji.isSafe"
+          >
             Simpan Data HR
           </v-btn>
         </v-card-actions>
@@ -235,8 +238,12 @@ const roleOptions = computed(() => {
 })
 
 const isBranchRole = computed(() => {
+  if (!form.value.role) return false
   if (form.value.role === 'UMKM Owner') return false
-  return customRoles.value.find(r => r.nama_peran === form.value.role) ? true : false
+  // Pastikan pencarian case-insensitive jika perlu, atau sekadar perkuat pengecekan eksistensi
+  const isCustom = customRoles.value.some(r => r.nama_peran === form.value.role)
+  // Jika bukan owner, kita asumsikan butuh cabang (kecuali Anda punya logika spesifik lain)
+  return isCustom || form.value.role !== 'UMKM Owner'
 })
 
 // === AUDITOR PP 36 TAHUN 2021 (Aturan 75% Upah Pokok) ===
@@ -326,13 +333,25 @@ const openAddDialog = () => {
 
 const editUser = (user) => {
   isEditing.value = true; editId.value = user.id;
+  
+  // Amankan array komponen gaji
+  let safeKomponen = []
+  if (user.komponen_gaji && Array.isArray(user.komponen_gaji)) {
+    safeKomponen = JSON.parse(JSON.stringify(user.komponen_gaji))
+  }
+
   form.value = { 
-    nik: user.nik || '', nama: user.nama, email: user.email, role: user.role, 
-    branch_id: user.branch_id || null, aktif: user.aktif !== undefined ? user.aktif : true,
+    nik: user.nik || '', 
+    nama: user.nama || '', 
+    email: user.email || '', 
+    role: user.role || 'Kasir', 
+    branch_id: user.branch_id || null, 
+    aktif: user.aktif !== undefined ? user.aktif : true,
     shift_pattern_id: user.shift_pattern_id || null, 
     anchor_date: user.anchor_date || '',
-    tipe_gaji: user.tipe_gaji || 'Bulanan', gaji_pokok: user.gaji_pokok || 0,
-    komponen_gaji: user.komponen_gaji ? JSON.parse(JSON.stringify(user.komponen_gaji)) : []
+    tipe_gaji: user.tipe_gaji || 'Bulanan', 
+    gaji_pokok: user.gaji_pokok || 0,
+    komponen_gaji: safeKomponen
   }
   dialog.value = true
 }
