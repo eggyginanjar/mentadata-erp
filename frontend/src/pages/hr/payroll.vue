@@ -130,7 +130,7 @@ import { ref, onMounted } from 'vue'
 import { db } from '../../firebase'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { authState } from '../../store/auth'
-import { calculateLembur } from '../../utils/payrollEngine' // <-- IMPOR MESIN ANDA DI SINI
+import { calculateLembur } from '../../utils/payrollEngine' 
 
 const filterMonth = ref('')
 const isLoading = ref(false)
@@ -148,6 +148,7 @@ const parseTime = (isoString) => {
   const d = new Date(isoString)
   return d.getHours() * 60 + d.getMinutes()
 }
+
 const parseShiftTime = (timeStr) => {
   if (!timeStr) return 0
   const [h, m] = timeStr.split(':').map(Number)
@@ -162,21 +163,24 @@ const generatePayroll = async () => {
   try {
     const tenantId = authState.value.tenantId
     const startDate = `${filterMonth.value}-01`
-    const endDate = `${filterMonth.value}-31`
+    // Gunakan trik tanggal 0 bulan berikutnya untuk mendapatkan hari terakhir bulan ini
+    const [year, month] = filterMonth.value.split('-')
+    const lastDay = new Date(year, month, 0).getDate()
+    const endDate = `${filterMonth.value}-${lastDay}`
 
-    // 1. Tarik Data Karyawan & Master Shift
+    // 1. Tarik Semua Data Master yang Dibutuhkan
     const usersSnap = await getDocs(collection(db, 'tenants', tenantId, 'users'))
     const shiftsSnap = await getDocs(collection(db, 'tenants', tenantId, 'master_shifts'))
+    const patternsSnap = await getDocs(collection(db, 'tenants', tenantId, 'shift_patterns'))
+    const componentsSnap = await getDocs(collection(db, 'tenants', tenantId, 'master_payroll_components'))
     
     const users = usersSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     const shifts = shiftsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const patterns = patternsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+    const masterComponents = componentsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    // 2. Tarik Data Absensi Bulan Ini
-    const qAtt = query(
-      collection(db, 'tenants', tenantId, 'attendance'),
-      where('tanggal', '>=', startDate),
-      where('tanggal', '<=', endDate)
-    )
+    // 2. Tarik Data Absensi
+    const qAtt = query(collection(db, 'tenants', tenantId, 'attendance'), where('tanggal', '>=', startDate), where('tanggal', '<=', endDate))
     const attSnap = await getDocs(qAtt)
     const attendances = attSnap.docs.map(d => d.data())
 
@@ -190,15 +194,33 @@ const generatePayroll = async () => {
       let totalTelatMenit = 0
       let totalMenitLembur = 0
 
-      // Filter absen spesifik milik user ini
       const userAtt = attendances.filter(a => a.email === user.email)
+      const userPattern = patterns.find(p => p.id === user.shift_pattern_id)
+      const anchorDate = user.anchor_date ? new Date(user.anchor_date) : null
 
       userAtt.forEach(att => {
         if (att.status === 'Hadir' && att.check_in && att.check_out) {
           totalHariKerja++
           
-          // Cari shift karyawan ini (Sebagai contoh, kita pakai Shift Default-nya)
-          const myShift = shifts.find(s => s.id === user.shift_id)
+          // MESIN PEMBACA ROSTER DINAMIS
+          let myShift = null
+          if (userPattern && anchorDate) {
+            const attDate = new Date(att.tanggal)
+            // Hitung selisih hari untuk menentukan posisi di dalam siklus roster
+            const diffTime = attDate - anchorDate
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+            
+            if (diffDays >= 0) {
+              const dayOfCycle = (diffDays % userPattern.siklus_hari) + 1
+              const patternDay = userPattern.jadwal_harian.find(d => d.hari_ke === dayOfCycle)
+              
+              if (patternDay && !patternDay.is_libur) {
+                myShift = shifts.find(s => s.id === patternDay.shift_id)
+              }
+            }
+          }
+
+          // KALKULASI LEMBUR & TELAT JIKA SHIFT DITEMUKAN
           if (myShift) {
             const actIn = parseTime(att.check_in)
             const actOut = parseTime(att.check_out)
@@ -206,12 +228,9 @@ const generatePayroll = async () => {
             let shOut = parseShiftTime(myShift.jam_pulang)
             if (myShift.lintas_hari) shOut += 24 * 60
 
-            // Cek Keterlambatan
             if (actIn > (shIn + myShift.toleransi)) {
               totalTelatMenit += (actIn - shIn)
             }
-
-            // Cek Lembur (Misal: Hitung lembur jika pulang > 30 menit dari jadwal)
             if (actOut > (shOut + 30)) {
               totalMenitLembur += (actOut - shOut)
             }
@@ -219,35 +238,63 @@ const generatePayroll = async () => {
         }
       })
 
-      // Konversi total menit lembur sebulan menjadi Jam (pembulatan 1 desimal)
       const totalJamLembur = Math.floor((totalMenitLembur / 60) * 10) / 10
 
-      // Hitung Tunjangan
-      const totalTunjangan = ((user.uang_makan || 0) + (user.uang_transport || 0)) * totalHariKerja
+      // PENYESUAIAN GAJI HARIAN VS BULANAN
+      const isHarian = user.tipe_gaji === 'Harian'
+      const baseGajiPokok = isHarian ? (user.gaji_pokok * totalHariKerja) : (user.gaji_pokok || 0)
 
-      // Eksekusi Mesin Payroll (PP 35/2021)
+      // KALKULATOR KOMPONEN GAJI DINAMIS (TUNJANGAN / POTONGAN)
+      let totalTunjanganTetap = 0
+      let totalTunjanganTidakTetap = 0
+      let totalPotongan = 0
+
+      if (user.komponen_gaji && Array.isArray(user.komponen_gaji)) {
+        user.komponen_gaji.forEach(kg => {
+          const master = masterComponents.find(mc => mc.id === kg.id_komponen)
+          if (master) {
+            if (master.tipe === 'Pendapatan') {
+              if (master.kategori.includes('Tidak Tetap')) {
+                totalTunjanganTidakTetap += (kg.nominal * totalHariKerja)
+              } else {
+                totalTunjanganTetap += kg.nominal
+              }
+            } else if (master.tipe === 'Potongan') {
+              totalPotongan += kg.nominal // Tambahkan logika spesifik potongan jika ada
+            }
+          }
+        })
+      }
+
+      const totalTunjangan = totalTunjanganTetap + totalTunjanganTidakTetap
+      
+      // Untuk Upah Lembur PP 35/2021, basis 1/173 adalah Gaji Pokok + Tunjangan Tetap
+      // Jika pekerja harian, kita proyeksikan gaji bulannya (Misal x 26 hari kerja)
+      const basisUpahBulanan = isHarian 
+        ? ((user.gaji_pokok * 26) + totalTunjanganTetap) 
+        : (baseGajiPokok + totalTunjanganTetap)
+
       let upahLembur = 0
       let rincianLembur = []
       if (totalJamLembur > 0) {
-        // Kita asumsikan hitungan standar (lembur hari kerja).
-        // Untuk tingkat lanjut, hitungan ini bisa dipecah per hari.
-        const hasilLembur = calculateLembur(user.gaji_pokok + totalTunjangan, totalJamLembur, false, 6)
+        const hasilLembur = calculateLembur(basisUpahBulanan, totalJamLembur, false, 6)
         upahLembur = hasilLembur.totalUpahLembur
         rincianLembur = hasilLembur.rincianKalkulasi
       }
 
       // Finalisasi Take Home Pay
-      const takeHomePay = (user.gaji_pokok || 0) + totalTunjangan + upahLembur
+      const takeHomePay = baseGajiPokok + totalTunjangan + upahLembur - totalPotongan
 
       calculated.push({
         user_id: user.id,
         nama: user.nama,
         role: user.role,
-        gaji_pokok: user.gaji_pokok || 0,
+        gaji_pokok: baseGajiPokok,
         total_hari_kerja: totalHariKerja,
         total_telat_menit: totalTelatMenit,
         total_jam_lembur: totalJamLembur,
         total_tunjangan: totalTunjangan,
+        total_potongan: totalPotongan,
         upah_lembur: upahLembur,
         rincian_lembur: rincianLembur,
         take_home_pay: takeHomePay
