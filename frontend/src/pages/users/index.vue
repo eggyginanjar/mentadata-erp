@@ -285,7 +285,7 @@
           <!-- Tombol disable jika Auditor mendeteksi pelanggaran UU -->
           <v-btn 
             color="teal-darken-3" variant="elevated" rounded="lg" class="px-8 font-weight-bold text-none" 
-            @click="saveUser" :loading="isSaving" :disabled="!auditorGaji.isSafe"
+            @click="saveUser" :loading="isSaving"
           >
             Simpan Data HR
           </v-btn>
@@ -474,9 +474,13 @@ const saveUser = async () => {
     tabDialog.value = 'biodata'
     return alert('Nama dan Email wajib diisi!')
   }
+  
   if (!auditorGaji.value.isSafe) {
-    tabDialog.value = 'payroll'
-    return alert('Perbaiki proporsi Gaji Pokok terlebih dahulu sesuai aturan undang-undang!')
+    const proceed = confirm('Peringatan: Proporsi Gaji Pokok berada di bawah standar UU (75%). Tetap lanjutkan menyimpan data ini?')
+    if (!proceed) {
+      tabDialog.value = 'payroll'
+      return
+    }
   }
 
   isSaving.value = true

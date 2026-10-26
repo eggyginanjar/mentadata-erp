@@ -3,7 +3,7 @@
   <v-container fluid class="pa-0">
     <div class="mb-6">
       <h2 class="text-h5 font-weight-bold text-blue-grey-darken-4">Kalkulasi Payroll & Penggajian</h2>
-      <p class="text-body-2 text-blue-grey-lighten-1">Otomatisasi perhitungan gaji berdasarkan kehadiran, lembur (PP 35/2021), dan potongan.</p>
+      <p class="text-body-2 text-blue-grey-lighten-1">Otomatisasi perhitungan gaji berdasarkan kehadiran, lembur (PP 35/2021 & Kustom), dan potongan.</p>
     </div>
 
     <!-- Filter Periode -->
@@ -55,7 +55,7 @@
             </td>
             <td class="text-right">
               <div class="font-weight-bold text-blue-grey-darken-3">{{ formatRupiah(pay.gaji_pokok) }}</div>
-              <div class="text-caption text-success">+ {{ formatRupiah(pay.total_tunjangan) }}</div>
+              <div class="text-caption text-success" v-if="pay.total_tunjangan > 0">+ {{ formatRupiah(pay.total_tunjangan) }}</div>
             </td>
             <td class="text-right font-weight-bold text-orange-darken-3">
               {{ formatRupiah(pay.upah_lembur) }}
@@ -98,8 +98,8 @@
             <span class="text-body-2">Gaji Pokok Dasar</span>
             <span class="font-weight-bold">{{ formatRupiah(selectedSlip.gaji_pokok) }}</span>
           </div>
-          <div class="d-flex justify-space-between mb-2">
-            <span class="text-body-2">Tunj. Makan & Transport ({{ selectedSlip.total_hari_kerja }} Hari)</span>
+          <div class="d-flex justify-space-between mb-2" v-if="selectedSlip.total_tunjangan > 0">
+            <span class="text-body-2">Total Tunjangan</span>
             <span class="font-weight-bold text-success">+ {{ formatRupiah(selectedSlip.total_tunjangan) }}</span>
           </div>
           
@@ -139,6 +139,11 @@ const payrollData = ref([])
 const slipDialog = ref(false)
 const selectedSlip = ref(null)
 
+// Pindahkan formatRupiah ke atas agar bisa diakses oleh loop
+const formatRupiah = (number) => {
+  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number || 0)
+}
+
 onMounted(() => {
   const today = new Date()
   filterMonth.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
@@ -163,7 +168,6 @@ const generatePayroll = async () => {
   try {
     const tenantId = authState.value.tenantId
     const startDate = `${filterMonth.value}-01`
-    // Gunakan trik tanggal 0 bulan berikutnya untuk mendapatkan hari terakhir bulan ini
     const [year, month] = filterMonth.value.split('-')
     const lastDay = new Date(year, month, 0).getDate()
     const endDate = `${filterMonth.value}-${lastDay}`
@@ -202,11 +206,9 @@ const generatePayroll = async () => {
         if (att.status === 'Hadir' && att.check_in && att.check_out) {
           totalHariKerja++
           
-          // MESIN PEMBACA ROSTER DINAMIS
           let myShift = null
           if (userPattern && anchorDate) {
             const attDate = new Date(att.tanggal)
-            // Hitung selisih hari untuk menentukan posisi di dalam siklus roster
             const diffTime = attDate - anchorDate
             const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
             
@@ -220,7 +222,6 @@ const generatePayroll = async () => {
             }
           }
 
-          // KALKULASI LEMBUR & TELAT JIKA SHIFT DITEMUKAN
           if (myShift) {
             const actIn = parseTime(att.check_in)
             const actOut = parseTime(att.check_out)
@@ -242,7 +243,15 @@ const generatePayroll = async () => {
 
       // PENYESUAIAN GAJI HARIAN VS BULANAN
       const isHarian = user.tipe_gaji === 'Harian'
-      const baseGajiPokok = isHarian ? (user.gaji_pokok * totalHariKerja) : (user.gaji_pokok || 0)
+      const isMingguan = user.tipe_gaji === 'Mingguan'
+      
+      let baseGajiPokok = user.gaji_pokok || 0
+      if (isHarian) {
+        baseGajiPokok = (user.gaji_pokok || 0) * totalHariKerja
+      } else if (isMingguan) {
+        // Asumsi hitungan proporsional per minggu kehadiran (Bisa disesuaikan lebih lanjut jika butuh validasi per pekan)
+        baseGajiPokok = (user.gaji_pokok || 0) * 4 
+      }
 
       // KALKULATOR KOMPONEN GAJI DINAMIS (TUNJANGAN / POTONGAN)
       let totalTunjanganTetap = 0
@@ -260,7 +269,7 @@ const generatePayroll = async () => {
                 totalTunjanganTetap += kg.nominal
               }
             } else if (master.tipe === 'Potongan') {
-              totalPotongan += kg.nominal // Tambahkan logika spesifik potongan jika ada
+              totalPotongan += kg.nominal 
             }
           }
         })
@@ -268,18 +277,26 @@ const generatePayroll = async () => {
 
       const totalTunjangan = totalTunjanganTetap + totalTunjanganTidakTetap
       
-      // Untuk Upah Lembur PP 35/2021, basis 1/173 adalah Gaji Pokok + Tunjangan Tetap
-      // Jika pekerja harian, kita proyeksikan gaji bulannya (Misal x 26 hari kerja)
-      const basisUpahBulanan = isHarian 
-        ? ((user.gaji_pokok * 26) + totalTunjanganTetap) 
-        : (baseGajiPokok + totalTunjanganTetap)
-
+      // LOGIKA LEMBUR ADAPTIF
       let upahLembur = 0
       let rincianLembur = []
+      
       if (totalJamLembur > 0) {
-        const hasilLembur = calculateLembur(basisUpahBulanan, totalJamLembur, false, 6)
-        upahLembur = hasilLembur.totalUpahLembur
-        rincianLembur = hasilLembur.rincianKalkulasi
+        if (user.tipe_lembur === 'Nominal Kustom (Flat/Jam)') {
+          // EKSEKUSI LEMBUR KUSTOM (FLAT RATE)
+          const tarifKustom = user.lembur_kustom || 0
+          upahLembur = totalJamLembur * tarifKustom
+          rincianLembur.push(`Lembur Flat Kustom (${totalJamLembur} Jam x ${formatRupiah(tarifKustom)})`)
+        } else {
+          // EKSEKUSI LEMBUR UU PP 35/2021
+          const basisUpahBulanan = isHarian 
+            ? (((user.gaji_pokok || 0) * 26) + totalTunjanganTetap) 
+            : (baseGajiPokok + totalTunjanganTetap)
+
+          const hasilLembur = calculateLembur(basisUpahBulanan, totalJamLembur, false, 6)
+          upahLembur = hasilLembur.totalUpahLembur
+          rincianLembur = hasilLembur.rincianKalkulasi
+        }
       }
 
       // Finalisasi Take Home Pay
@@ -313,9 +330,5 @@ const generatePayroll = async () => {
 const viewSlip = (data) => {
   selectedSlip.value = data
   slipDialog.value = true
-}
-
-const formatRupiah = (number) => {
-  return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number || 0)
 }
 </script>
