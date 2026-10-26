@@ -122,7 +122,7 @@
                     <v-icon v-else-if="log.is_manual" color="orange-darken-3" size="small" class="mr-1">mdi-hand-pen</v-icon>
                     <div>
                       <div class="font-weight-bold">{{ formatTime(log.check_in) }}</div>
-                      <div class="text-caption" :class="log.is_manual ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ log.is_manual ? 'Manual' : `Jarak: ${log.distance_in}m` }}</div>
+                      <div class="text-caption" :class="log.is_manual ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ log.is_manual && !log.photo_in ? 'Manual' : `Jarak: ${log.distance_in || '-'}m` }}</div>
                     </div>
                   </div>
                 </td>
@@ -134,20 +134,18 @@
                     <v-icon v-else-if="log.is_manual" color="orange-darken-3" size="small" class="mr-1">mdi-hand-pen</v-icon>
                     <div>
                       <div class="font-weight-bold">{{ formatTime(log.check_out) }}</div>
-                      <div class="text-caption" :class="log.is_manual ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ log.is_manual ? 'Manual' : `Jarak: ${log.distance_out}m` }}</div>
+                      <div class="text-caption" :class="log.is_manual ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ log.is_manual && !log.photo_out ? 'Manual' : `Jarak: ${log.distance_out || '-'}m` }}</div>
                     </div>
                   </div>
                   <span v-else class="text-caption text-grey font-italic">Belum Pulang</span>
                 </td>
                 
-                <!-- Kolom Jam Lembur dengan efek coret jika belum diapprove -->
                 <td class="font-weight-bold" :class="log.lemburJam > 0 && log.lembur_approved ? 'text-orange-darken-3' : 'text-grey'">
                   <span :class="log.lemburJam > 0 && !log.lembur_approved ? 'text-decoration-line-through' : ''">
                     {{ log.lemburJam > 0 ? `${log.lemburJam.toFixed(1)} Jam` : '-' }}
                   </span>
                 </td>
 
-                <!-- Kolom Aksi Approval -->
                 <td class="text-center">
                   <v-switch
                     v-if="log.lemburJam > 0"
@@ -183,9 +181,19 @@
           <v-form @submit.prevent="saveManual">
             <v-select v-model="manualForm.email" :items="usersList" item-title="nama" item-value="email" label="Pilih Karyawan" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-select>
             <v-text-field v-model="manualForm.tanggal" type="date" label="Tanggal Kehadiran" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field>
+            
+            <div class="text-caption text-blue-grey-darken-1 mb-2">
+              <v-icon size="small" class="mr-1">mdi-information-outline</v-icon> Kosongkan salah satu jam jika hanya ingin menambahkan titik absen yang terlupa (misal: hanya absen pulang).
+            </div>
+            
             <v-row dense>
-              <v-col cols="6"><v-text-field v-model="manualForm.in" type="time" label="Jam Masuk" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field></v-col>
-              <v-col cols="6"><v-text-field v-model="manualForm.out" type="time" label="Jam Pulang" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field></v-col>
+              <v-col cols="6">
+                <!-- clearable ditambahkan agar bisa dikosongkan -->
+                <v-text-field v-model="manualForm.in" type="time" label="Jam Masuk (Opsional)" clearable variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field>
+              </v-col>
+              <v-col cols="6">
+                <v-text-field v-model="manualForm.out" type="time" label="Jam Pulang (Opsional)" clearable variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field>
+              </v-col>
             </v-row>
             <v-textarea v-model="manualForm.note" label="Keterangan / Alasan Manual" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" rows="2" hide-details></v-textarea>
           </v-form>
@@ -217,7 +225,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { db } from '../../firebase'
-// Tambahkan doc dan updateDoc untuk mengupdate status approval langsung ke database
 import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
@@ -242,7 +249,7 @@ const filters = ref({
 
 const manualDialog = ref(false)
 const isSavingManual = ref(false)
-const manualForm = ref({ email: '', tanggal: '', in: '08:00', out: '17:00', note: '' })
+const manualForm = ref({ email: '', tanggal: '', in: '', out: '', note: '' }) // Default kosong
 const photoDialog = ref({ show: false, url: '', employee: '', type: '' })
 
 const parseTime = (isoString) => {
@@ -346,7 +353,6 @@ const generateRecap = async () => {
             
             if (lemburMenit > 0) {
               lemburJam = Math.round((lemburMenit / 60) * 2) / 2
-              // HANYA hitung ke total jika HRD sudah menyetujui (lembur_approved = true)
               if (att.lembur_approved === true) {
                 totalJamLembur += lemburJam
               }
@@ -358,7 +364,7 @@ const generateRecap = async () => {
           ...att, 
           shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', 
           lemburJam,
-          lembur_approved: att.lembur_approved || false // Set default false jika belum ada di database
+          lembur_approved: att.lembur_approved || false 
         })
       })
 
@@ -382,14 +388,11 @@ const generateRecap = async () => {
   }
 }
 
-// === FUNGSI UPDATE APPROVAL LEMBUR ===
 const updateApproval = async (log) => {
   try {
     const docRef = doc(db, 'tenants', authState.value.tenantId, 'attendance', log.id)
-    // Update status ke Firestore
     await updateDoc(docRef, { lembur_approved: log.lembur_approved })
 
-    // Kalkulasi ulang total jam lembur di UI secara instan agar tabel induk ikut berubah
     if (selectedRecap.value) {
       let newTotal = 0
       selectedRecap.value.detailLogs.forEach(l => {
@@ -400,36 +403,75 @@ const updateApproval = async (log) => {
   } catch (error) {
     console.error(error)
     alert('Gagal menyimpan status approval lembur ke server.')
-    log.lembur_approved = !log.lembur_approved // Kembalikan ke status awal jika gagal
+    log.lembur_approved = !log.lembur_approved 
   }
 }
 
 const openManualDialog = () => {
-  manualForm.value = { email: '', tanggal: new Date().toISOString().split('T')[0], in: '08:00', out: '17:00', note: '' }
+  // Nilai input jam disetel kosong secara default agar tidak memaksa HRD
+  manualForm.value = { email: '', tanggal: new Date().toISOString().split('T')[0], in: '', out: '', note: '' }
   manualDialog.value = true
 }
 
 const saveManual = async () => {
-  if (!manualForm.value.email || !manualForm.value.tanggal || !manualForm.value.in) return alert("Lengkapi data form manual!")
+  if (!manualForm.value.email || !manualForm.value.tanggal) return alert("Pilih Karyawan dan Tanggal terlebih dahulu!")
+  if (!manualForm.value.in && !manualForm.value.out) return alert("Isi minimal Jam Masuk atau Jam Pulang!")
+  
   isSavingManual.value = true
   try {
     const user = usersList.value.find(u => u.email === manualForm.value.email)
-    const checkInISO = new Date(`${manualForm.value.tanggal}T${manualForm.value.in}:00`).toISOString()
-    const checkOutISO = manualForm.value.out ? new Date(`${manualForm.value.tanggal}T${manualForm.value.out}:00`).toISOString() : null
     
-    const payload = {
-      user_id: user.id, nama: user.nama, email: user.email, branch_id: user.branch_id,
-      tanggal: manualForm.value.tanggal, status: 'Hadir',
-      check_in: checkInISO, check_out: checkOutISO,
-      is_manual: true, note_manual: manualForm.value.note, 
-      lembur_approved: false, // Default tidak diapprove
-      created_at: serverTimestamp()
+    let checkInISO = null
+    if (manualForm.value.in) {
+      checkInISO = new Date(`${manualForm.value.tanggal}T${manualForm.value.in}:00`).toISOString()
     }
     
-    await addDoc(collection(db, 'tenants', authState.value.tenantId, 'attendance'), payload)
+    let checkOutISO = null
+    if (manualForm.value.out) {
+      checkOutISO = new Date(`${manualForm.value.tanggal}T${manualForm.value.out}:00`).toISOString()
+    }
+    
+    // Mesin Cerdas: Cek apakah data di tanggal tersebut sudah ada di Database
+    const attRef = collection(db, 'tenants', authState.value.tenantId, 'attendance')
+    const qCheck = query(attRef, where('email', '==', user.email), where('tanggal', '==', manualForm.value.tanggal))
+    const existingDocs = await getDocs(qCheck)
+
+    if (!existingDocs.empty) {
+      // UPDATE DATA (Misal: menambal jam pulang yang kelupaan)
+      const docId = existingDocs.docs[0].id
+      const existingData = existingDocs.docs[0].data()
+      
+      const updatePayload = {
+        is_manual: true,
+        note_manual: manualForm.value.note || existingData.note_manual || ''
+      }
+      
+      // Hanya perbarui jam jika HRD mengisinya di form
+      if (checkInISO) updatePayload.check_in = checkInISO
+      if (checkOutISO) updatePayload.check_out = checkOutISO
+      
+      await updateDoc(doc(db, 'tenants', authState.value.tenantId, 'attendance', docId), updatePayload)
+    } else {
+      // BUAT DATA BARU
+      const payload = {
+        user_id: user.id, nama: user.nama, email: user.email, branch_id: user.branch_id,
+        tanggal: manualForm.value.tanggal, status: 'Hadir',
+        check_in: checkInISO, check_out: checkOutISO,
+        is_manual: true, note_manual: manualForm.value.note, 
+        lembur_approved: false,
+        created_at: serverTimestamp()
+      }
+      await addDoc(attRef, payload)
+    }
+    
     manualDialog.value = false
-    alert("Absen manual berhasil disimpan! Silakan klik 'Tarik Data' untuk menyegarkan tabel.")
-  } catch (err) { alert("Gagal menyimpan absen manual.") } finally { isSavingManual.value = false }
+    alert("Absen manual berhasil disimpan/diperbarui! Silakan klik 'Tarik Data' untuk menyegarkan tabel.")
+  } catch (err) { 
+    console.error(err)
+    alert("Gagal menyimpan absen manual.") 
+  } finally { 
+    isSavingManual.value = false 
+  }
 }
 
 const openDetail = (recap) => { selectedRecap.value = recap; detailDialog.value = true }
