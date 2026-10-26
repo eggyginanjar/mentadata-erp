@@ -6,21 +6,28 @@
       <p class="text-body-2 text-blue-grey-lighten-1">Otomatisasi perhitungan gaji berdasarkan kehadiran, lembur (PP 35/2021 & Kustom), dan potongan.</p>
     </div>
 
-    <!-- Filter Periode -->
+    <!-- Filter Periode (Rentang Tanggal Dinamis) -->
     <v-card class="mb-5 pa-4 border-sm" elevation="0" rounded="xl" color="white">
       <v-row dense align="center">
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="3">
           <v-text-field
-            v-model="filterMonth"
-            type="month"
-            label="Periode Penggajian"
+            v-model="filters.startDate"
+            type="date"
+            label="Tanggal Mulai (Cut-off Awal)"
             variant="outlined" density="comfortable" color="teal-darken-3" hide-details
-            prepend-inner-icon="mdi-calendar-month"
           ></v-text-field>
         </v-col>
-        <v-col cols="12" md="8" class="d-flex justify-end gap-2">
+        <v-col cols="12" md="3">
+          <v-text-field
+            v-model="filters.endDate"
+            type="date"
+            label="Tanggal Akhir (Cut-off Akhir)"
+            variant="outlined" density="comfortable" color="teal-darken-3" hide-details
+          ></v-text-field>
+        </v-col>
+        <v-col cols="12" md="6" class="d-flex justify-end gap-2">
           <v-btn color="teal-darken-3" size="large" rounded="lg" class="text-none font-weight-bold px-6" prepend-icon="mdi-calculator" :loading="isLoading" @click="generatePayroll">
-            Kalkulasi Gaji Bulan Ini
+            Kalkulasi Gaji Periode Ini
           </v-btn>
         </v-col>
       </v-row>
@@ -70,7 +77,7 @@
           <tr v-if="payrollData.length === 0">
             <td colspan="7" class="text-center pa-8 text-blue-grey-lighten-2">
               <v-icon size="48" class="mb-2">mdi-cash-register</v-icon>
-              <p>Belum ada kalkulasi. Klik tombol 'Kalkulasi Gaji' di atas.</p>
+              <p>Belum ada kalkulasi. Tentukan rentang tanggal dan klik tombol Kalkulasi.</p>
             </td>
           </tr>
         </tbody>
@@ -89,7 +96,7 @@
         <v-card-text class="pa-6">
           <div class="text-center mb-4">
             <h3 class="text-h6 font-weight-bold">{{ selectedSlip.nama }}</h3>
-            <div class="text-caption text-grey-darken-1">Periode: {{ filterMonth }}</div>
+            <div class="text-caption text-grey-darken-1">Periode: {{ formatDate(filters.startDate) }} s/d {{ formatDate(filters.endDate) }}</div>
           </div>
           
           <v-divider class="mb-4"></v-divider>
@@ -101,6 +108,10 @@
           <div class="d-flex justify-space-between mb-2" v-if="selectedSlip.total_tunjangan > 0">
             <span class="text-body-2">Total Tunjangan</span>
             <span class="font-weight-bold text-success">+ {{ formatRupiah(selectedSlip.total_tunjangan) }}</span>
+          </div>
+          <div class="d-flex justify-space-between mb-2" v-if="selectedSlip.total_potongan > 0">
+            <span class="text-body-2">Total Potongan</span>
+            <span class="font-weight-bold text-error">- {{ formatRupiah(selectedSlip.total_potongan) }}</span>
           </div>
           
           <div v-if="selectedSlip.upah_lembur > 0">
@@ -126,27 +137,34 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { db } from '../../firebase'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 import { calculateLembur } from '../../utils/payrollEngine' 
 
-const filterMonth = ref('')
 const isLoading = ref(false)
 const payrollData = ref([])
 
 const slipDialog = ref(false)
 const selectedSlip = ref(null)
 
+// Default: Tanggal 1 s.d Akhir Bulan Berjalan
+const today = new Date()
+const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+const filters = ref({
+  startDate: firstDay.toISOString().split('T')[0],
+  endDate: lastDay.toISOString().split('T')[0]
+})
+
 const formatRupiah = (number) => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number || 0)
 }
-
-onMounted(() => {
-  const today = new Date()
-  filterMonth.value = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-})
+const formatDate = (dateStr) => {
+  if (!dateStr) return '-'
+  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr))
+}
 
 const parseTime = (isoString) => {
   const d = new Date(isoString)
@@ -160,16 +178,15 @@ const parseShiftTime = (timeStr) => {
 }
 
 const generatePayroll = async () => {
-  if (!filterMonth.value) return
+  if (!filters.value.startDate || !filters.value.endDate) return alert('Pilih rentang tanggal terlebih dahulu.')
+  
   isLoading.value = true
   payrollData.value = []
 
   try {
     const tenantId = authState.value.tenantId
-    const startDate = `${filterMonth.value}-01`
-    const [year, month] = filterMonth.value.split('-')
-    const lastDay = new Date(year, month, 0).getDate()
-    const endDate = `${filterMonth.value}-${lastDay}`
+    const startDate = filters.value.startDate
+    const endDate = filters.value.endDate
 
     const usersSnap = await getDocs(collection(db, 'tenants', tenantId, 'users'))
     const shiftsSnap = await getDocs(collection(db, 'tenants', tenantId, 'master_shifts'))
@@ -204,7 +221,6 @@ const generatePayroll = async () => {
           
           let myShift = null
           if (userPattern && anchorDate) {
-            // FIX 1: Sinkronisasi Zona Waktu (UTC) seperti di Recap
             const tglAtt = new Date(att.tanggal + 'T00:00:00Z')
             const tglAnchor = new Date(user.anchor_date + 'T00:00:00Z')
             const diffDays = Math.floor((tglAtt - tglAnchor) / (1000 * 60 * 60 * 24))
@@ -227,15 +243,12 @@ const generatePayroll = async () => {
             
             if (myShift.lintas_hari) shOut += 24 * 60
             
-            // FIX 2: Koreksi Midnight Bug
             if (actOut < actIn) actOut += 24 * 60 
 
-            // Kalkulasi Keterlambatan
             if (actIn > (shIn + myShift.toleransi)) {
               totalTelatMenit += (actIn - shIn)
             }
             
-            // FIX 3: Deteksi Lembur Awal (Datang Pagi) & Lembur Akhir (Pulang Telat)
             let lemburHarian = 0
             if (actIn < (shIn - 30)) {
               lemburHarian += (shIn - actIn)
