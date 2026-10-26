@@ -230,7 +230,17 @@
                   </div>
                   <v-row dense>
                     <v-col cols="12" sm="6">
-                      <v-select v-model="form.tipe_lembur" :items="['UU (PP 35/2021)', 'Nominal Kustom (Flat/Jam)']" label="Dasar Perhitungan Lembur" variant="outlined" density="comfortable" color="indigo-darken-3" hide-details bg-color="white"></v-select>
+                      <v-select 
+                        v-model="form.tipe_lembur" 
+                        :items="['UU (PP 35/2021)', 'Nominal Kustom (Flat/Jam)']" 
+                        label="Dasar Perhitungan Lembur" 
+                        variant="outlined" 
+                        density="comfortable" 
+                        color="indigo-darken-3" 
+                        hide-details 
+                        bg-color="white"
+                        theme="light"
+                      ></v-select>
                     </v-col>
                     <v-col cols="12" sm="6" v-if="form.tipe_lembur === 'Nominal Kustom (Flat/Jam)'">
                       <v-text-field v-model.number="form.lembur_kustom" label="Nominal Flat per Jam" prefix="Rp" type="number" variant="outlined" density="comfortable" color="indigo-darken-3" hide-details bg-color="white" hint="Nilai tetap lembur per 1 jam kerja." persistent-hint></v-text-field>
