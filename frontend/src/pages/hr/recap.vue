@@ -132,7 +132,8 @@
                   <span v-else class="text-caption text-grey font-italic">Belum Pulang</span>
                 </td>
                 <td class="text-orange-darken-3 font-weight-bold">
-                  {{ log.lemburHarian > 0 ? `${(log.lemburHarian/60).toFixed(1)} Jam` : '-' }}
+                  <!-- Tampilkan nilai lembur jam yang sudah dibulatkan -->
+                  {{ log.lemburJam > 0 ? `${log.lemburJam.toFixed(1)} Jam` : '-' }}
                 </td>
               </tr>
               <tr v-if="selectedRecap.detailLogs.length === 0">
@@ -172,7 +173,7 @@
       </v-card>
     </v-dialog>
 
-    <!-- Dialog Pratinjau Foto (Tetap Ada) -->
+    <!-- Dialog Pratinjau Foto -->
     <v-dialog v-model="photoDialog.show" max-width="400">
       <v-card rounded="xl" class="bg-black">
         <v-card-title class="pa-4 d-flex justify-space-between align-center text-white border-b border-white-10">
@@ -236,7 +237,7 @@ onMounted(() => {
   onSnapshot(collection(db, 'tenants', tenantId, 'shift_patterns'), (snap) => { patternsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
 })
 
-// === ENGINE TARGET KERJA (DIPERBAIKI DENGAN ZONA WAKTU UTC) ===
+// === ENGINE TARGET KERJA ===
 const calculateTargetKerja = (startStr, endStr, pattern, anchorStr) => {
   if (!pattern || !anchorStr) return 0
   let count = 0
@@ -283,11 +284,12 @@ const generateRecap = async () => {
       const targetKerja = calculateTargetKerja(filters.value.startDate, filters.value.endDate, userPattern, user.anchor_date)
       
       let aktualHadir = 0
-      let totalMenitLembur = 0
+      let totalJamLembur = 0 // Ubah penampung menjadi totalJamLembur
       const detailLogs = []
 
       userAtt.forEach(att => {
-        let lemburHarian = 0
+        let lemburMenit = 0 
+        let lemburJam = 0   // Penampung lembur jam setelah pembulatan
         let myShift = null
         
         if (att.status === 'Hadir' && att.check_in) {
@@ -299,6 +301,7 @@ const generateRecap = async () => {
             const diffDays = Math.floor((tglAtt - tglAnchor) / (1000 * 60 * 60 * 24))
             
             if (diffDays >= 0) {
+              const dayOfCycle = (diffDays % userPattern.siklus_hari) + 1
               const patternDay = userPattern.jadwal_harian.find(d => d.hari_ke === (diffDays % userPattern.siklus_hari) + 1)
               if (patternDay && !patternDay.is_libur) myShift = shiftsList.value.find(s => s.id === patternDay.shift_id)
             }
@@ -312,25 +315,26 @@ const generateRecap = async () => {
             let shOut = parseShiftTime(myShift.jam_pulang)
             
             if (myShift.lintas_hari) shOut += 24 * 60
-            
-            // KOREKSI TENGAH MALAM: Jika jam pulang lebih kecil dari jam masuk, artinya melintasi hari
             if (actOut < actIn) actOut += 24 * 60 
 
-            // 1. HITUNG LEMBUR AWAL (Masuk Jauh Lebih Pagi dari Jadwal)
+            // 1. HITUNG LEMBUR AWAL & AKHIR DALAM MENIT
             if (actIn < (shIn - 30)) {
-              lemburHarian += (shIn - actIn)
+              lemburMenit += (shIn - actIn)
             }
-            
-            // 2. HITUNG LEMBUR AKHIR (Pulang Lebih Lambat)
             if (actOut > (shOut + 30)) {
-              lemburHarian += (actOut - shOut)
+              lemburMenit += (actOut - shOut)
             }
             
-            totalMenitLembur += lemburHarian
+            // 2. LAKUKAN PEMBULATAN KE 0.5 JAM TERDEKAT
+            if (lemburMenit > 0) {
+              lemburJam = Math.round((lemburMenit / 60) * 2) / 2
+              totalJamLembur += lemburJam
+            }
           }
         }
         
-        detailLogs.push({ ...att, shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', lemburHarian })
+        // Simpan nilai yang sudah dibulatkan ke detail
+        detailLogs.push({ ...att, shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', lemburJam })
       })
 
       let absenMangkir = targetKerja - aktualHadir
@@ -340,7 +344,7 @@ const generateRecap = async () => {
 
       result.push({
         user, targetKerja, aktualHadir, absenMangkir,
-        totalLembur: Math.floor((totalMenitLembur / 60) * 10) / 10,
+        totalLembur: totalJamLembur, // Gunakan nilai total jam yang rapi
         detailLogs
       })
     }
