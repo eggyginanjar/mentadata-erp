@@ -139,7 +139,6 @@ const payrollData = ref([])
 const slipDialog = ref(false)
 const selectedSlip = ref(null)
 
-// Pindahkan formatRupiah ke atas agar bisa diakses oleh loop
 const formatRupiah = (number) => {
   return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(number || 0)
 }
@@ -172,7 +171,6 @@ const generatePayroll = async () => {
     const lastDay = new Date(year, month, 0).getDate()
     const endDate = `${filterMonth.value}-${lastDay}`
 
-    // 1. Tarik Semua Data Master yang Dibutuhkan
     const usersSnap = await getDocs(collection(db, 'tenants', tenantId, 'users'))
     const shiftsSnap = await getDocs(collection(db, 'tenants', tenantId, 'master_shifts'))
     const patternsSnap = await getDocs(collection(db, 'tenants', tenantId, 'shift_patterns'))
@@ -183,12 +181,10 @@ const generatePayroll = async () => {
     const patterns = patternsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     const masterComponents = componentsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    // 2. Tarik Data Absensi
     const qAtt = query(collection(db, 'tenants', tenantId, 'attendance'), where('tanggal', '>=', startDate), where('tanggal', '<=', endDate))
     const attSnap = await getDocs(qAtt)
     const attendances = attSnap.docs.map(d => d.data())
 
-    // 3. Kalkulasi per Karyawan (JEMBATAN ABSENSI -> PAYROLL)
     const calculated = []
     
     for (const user of users) {
@@ -208,9 +204,10 @@ const generatePayroll = async () => {
           
           let myShift = null
           if (userPattern && anchorDate) {
-            const attDate = new Date(att.tanggal)
-            const diffTime = attDate - anchorDate
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+            // FIX 1: Sinkronisasi Zona Waktu (UTC) seperti di Recap
+            const tglAtt = new Date(att.tanggal + 'T00:00:00Z')
+            const tglAnchor = new Date(user.anchor_date + 'T00:00:00Z')
+            const diffDays = Math.floor((tglAtt - tglAnchor) / (1000 * 60 * 60 * 24))
             
             if (diffDays >= 0) {
               const dayOfCycle = (diffDays % userPattern.siklus_hari) + 1
@@ -224,24 +221,36 @@ const generatePayroll = async () => {
 
           if (myShift) {
             const actIn = parseTime(att.check_in)
-            const actOut = parseTime(att.check_out)
+            let actOut = parseTime(att.check_out)
             const shIn = parseShiftTime(myShift.jam_masuk)
             let shOut = parseShiftTime(myShift.jam_pulang)
+            
             if (myShift.lintas_hari) shOut += 24 * 60
+            
+            // FIX 2: Koreksi Midnight Bug
+            if (actOut < actIn) actOut += 24 * 60 
 
+            // Kalkulasi Keterlambatan
             if (actIn > (shIn + myShift.toleransi)) {
               totalTelatMenit += (actIn - shIn)
             }
-            if (actOut > (shOut + 30)) {
-              totalMenitLembur += (actOut - shOut)
+            
+            // FIX 3: Deteksi Lembur Awal (Datang Pagi) & Lembur Akhir (Pulang Telat)
+            let lemburHarian = 0
+            if (actIn < (shIn - 30)) {
+              lemburHarian += (shIn - actIn)
             }
+            if (actOut > (shOut + 30)) {
+              lemburHarian += (actOut - shOut)
+            }
+            
+            totalMenitLembur += lemburHarian
           }
         }
       })
 
       const totalJamLembur = Math.floor((totalMenitLembur / 60) * 10) / 10
 
-      // PENYESUAIAN GAJI HARIAN VS BULANAN
       const isHarian = user.tipe_gaji === 'Harian'
       const isMingguan = user.tipe_gaji === 'Mingguan'
       
@@ -249,11 +258,9 @@ const generatePayroll = async () => {
       if (isHarian) {
         baseGajiPokok = (user.gaji_pokok || 0) * totalHariKerja
       } else if (isMingguan) {
-        // Asumsi hitungan proporsional per minggu kehadiran (Bisa disesuaikan lebih lanjut jika butuh validasi per pekan)
         baseGajiPokok = (user.gaji_pokok || 0) * 4 
       }
 
-      // KALKULATOR KOMPONEN GAJI DINAMIS (TUNJANGAN / POTONGAN)
       let totalTunjanganTetap = 0
       let totalTunjanganTidakTetap = 0
       let totalPotongan = 0
@@ -277,18 +284,15 @@ const generatePayroll = async () => {
 
       const totalTunjangan = totalTunjanganTetap + totalTunjanganTidakTetap
       
-      // LOGIKA LEMBUR ADAPTIF
       let upahLembur = 0
       let rincianLembur = []
       
       if (totalJamLembur > 0) {
         if (user.tipe_lembur === 'Nominal Kustom (Flat/Jam)') {
-          // EKSEKUSI LEMBUR KUSTOM (FLAT RATE)
           const tarifKustom = user.lembur_kustom || 0
           upahLembur = totalJamLembur * tarifKustom
           rincianLembur.push(`Lembur Flat Kustom (${totalJamLembur} Jam x ${formatRupiah(tarifKustom)})`)
         } else {
-          // EKSEKUSI LEMBUR UU PP 35/2021
           const basisUpahBulanan = isHarian 
             ? (((user.gaji_pokok || 0) * 26) + totalTunjanganTetap) 
             : (baseGajiPokok + totalTunjanganTetap)
@@ -299,7 +303,6 @@ const generatePayroll = async () => {
         }
       }
 
-      // Finalisasi Take Home Pay
       const takeHomePay = baseGajiPokok + totalTunjangan + upahLembur - totalPotongan
 
       calculated.push({
