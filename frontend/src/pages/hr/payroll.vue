@@ -39,7 +39,7 @@
         <thead class="bg-blue-grey-lighten-5">
           <tr>
             <th class="font-weight-bold text-blue-grey-darken-3">Nama Karyawan</th>
-            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Kehadiran</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Kehadiran Valid</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-center">Lembur</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-right">Gaji Pokok & Tunj.</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-right">Upah Lembur</th>
@@ -56,6 +56,11 @@
             <td class="text-center">
               <v-chip size="small" color="teal-darken-3" variant="tonal" class="font-weight-bold mb-1">{{ pay.total_hari_kerja }} Hari</v-chip>
               <div class="text-caption text-red-darken-2" v-if="pay.total_telat_menit > 0">Telat: {{ pay.total_telat_menit }} mnt</div>
+              
+              <!-- INDIKATOR PERINGATAN BARU: Data Menggantung / Lupa Pulang -->
+              <div class="text-caption text-orange-darken-4 font-weight-bold mt-1 d-flex align-center justify-center" v-if="pay.total_data_menggantung > 0">
+                <v-icon size="x-small" class="mr-1">mdi-alert</v-icon> {{ pay.total_data_menggantung }} Lupa Pulang (Hangus)
+              </div>
             </td>
             <td class="text-center font-weight-bold text-orange-darken-3">
               {{ pay.total_jam_lembur > 0 ? `${pay.total_jam_lembur.toFixed(1)} Jam` : '-' }}
@@ -99,6 +104,11 @@
             <div class="text-caption text-grey-darken-1">Periode: {{ formatDate(filters.startDate) }} s/d {{ formatDate(filters.endDate) }}</div>
           </div>
           
+          <!-- Peringatan di dalam Slip Gaji -->
+          <v-alert v-if="selectedSlip.total_data_menggantung > 0" type="warning" variant="tonal" density="compact" class="mb-4 text-caption">
+            Terdapat {{ selectedSlip.total_data_menggantung }} hari kehadiran yang tidak dihitung ke dalam upah karena karyawan lupa melakukan absen pulang.
+          </v-alert>
+
           <v-divider class="mb-4"></v-divider>
           
           <div class="d-flex justify-space-between mb-2">
@@ -149,7 +159,6 @@ const payrollData = ref([])
 const slipDialog = ref(false)
 const selectedSlip = ref(null)
 
-// Default: Tanggal 1 s.d Akhir Bulan Berjalan
 const today = new Date()
 const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
 const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
@@ -210,13 +219,22 @@ const generatePayroll = async () => {
       let totalHariKerja = 0
       let totalTelatMenit = 0
       let totalMenitLembur = 0
+      let totalDataMenggantung = 0 // Variabel Pelacak Lupa Pulang
 
       const userAtt = attendances.filter(a => a.email === user.email)
       const userPattern = patterns.find(p => p.id === user.shift_pattern_id)
       const anchorDate = user.anchor_date ? new Date(user.anchor_date) : null
 
       userAtt.forEach(att => {
-        if (att.status === 'Hadir' && att.check_in && att.check_out) {
+        if (att.status === 'Hadir' && att.check_in) {
+          
+          // LOGIKA HANGUS: Jika belum check out, masukkan ke data menggantung dan lompati kalkulasi gaji/lembur hari itu
+          if (!att.check_out) {
+            totalDataMenggantung++
+            return 
+          }
+
+          // Jika check_out ada, dihitung sebagai Kehadiran Valid
           totalHariKerja++
           
           let myShift = null
@@ -242,7 +260,6 @@ const generatePayroll = async () => {
             let shOut = parseShiftTime(myShift.jam_pulang)
             
             if (myShift.lintas_hari) shOut += 24 * 60
-            
             if (actOut < actIn) actOut += 24 * 60 
 
             if (actIn > (shIn + myShift.toleransi)) {
@@ -329,6 +346,7 @@ const generatePayroll = async () => {
         total_tunjangan: totalTunjangan,
         total_potongan: totalPotongan,
         upah_lembur: upahLembur,
+        total_data_menggantung: totalDataMenggantung, // Kirim variabel ini ke UI
         rincian_lembur: rincianLembur,
         take_home_pay: takeHomePay
       })
