@@ -46,7 +46,7 @@
             <th class="font-weight-bold text-blue-grey-darken-3 text-center">Target Hari Kerja</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-center">Aktual Hadir</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-center">Absen / Mangkir</th>
-            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Total Lembur</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Lembur Disetujui</th>
             <th class="font-weight-bold text-blue-grey-darken-3 text-center" style="width: 130px;">Aksi</th>
           </tr>
         </thead>
@@ -65,7 +65,14 @@
                 {{ recap.absenMangkir }} Hari
               </v-chip>
             </td>
-            <td class="text-center font-weight-bold text-orange-darken-3">{{ recap.totalLembur > 0 ? `${recap.totalLembur.toFixed(1)} Jam` : '-' }}</td>
+            <td class="text-center font-weight-bold text-orange-darken-3">
+              <!-- Indikator jam lembur yang telah disetujui -->
+              <v-chip size="small" color="orange-darken-3" variant="tonal" v-if="recap.totalLembur > 0">
+                <v-icon start size="x-small">mdi-check-decagram</v-icon>
+                {{ recap.totalLembur.toFixed(1) }} Jam
+              </v-chip>
+              <span v-else class="text-grey">-</span>
+            </td>
             <td class="text-center">
               <v-btn color="indigo-darken-2" variant="tonal" size="small" class="text-none font-weight-bold" @click="openDetail(recap)">
                 Lihat Detail
@@ -83,7 +90,7 @@
     </v-card>
 
     <!-- Dialog Detail Harian Karyawan -->
-    <v-dialog v-model="detailDialog" max-width="900px" scrollable>
+    <v-dialog v-model="detailDialog" max-width="1000px" scrollable>
       <v-card rounded="xl" color="white" v-if="selectedRecap">
         <v-card-title class="pa-4 bg-indigo-darken-3 text-white d-flex align-center">
           <v-icon start>mdi-calendar-multiselect</v-icon>
@@ -99,7 +106,8 @@
                 <th class="font-weight-bold">Shift Target</th>
                 <th class="font-weight-bold">Check-In</th>
                 <th class="font-weight-bold">Check-Out</th>
-                <th class="font-weight-bold">Lembur</th>
+                <th class="font-weight-bold">Lembur Aktual</th>
+                <th class="font-weight-bold text-center">Approval (SPKL)</th>
               </tr>
             </thead>
             <tbody>
@@ -131,13 +139,30 @@
                   </div>
                   <span v-else class="text-caption text-grey font-italic">Belum Pulang</span>
                 </td>
-                <td class="text-orange-darken-3 font-weight-bold">
-                  <!-- Tampilkan nilai lembur jam yang sudah dibulatkan -->
-                  {{ log.lemburJam > 0 ? `${log.lemburJam.toFixed(1)} Jam` : '-' }}
+                
+                <!-- Kolom Jam Lembur dengan efek coret jika belum diapprove -->
+                <td class="font-weight-bold" :class="log.lemburJam > 0 && log.lembur_approved ? 'text-orange-darken-3' : 'text-grey'">
+                  <span :class="log.lemburJam > 0 && !log.lembur_approved ? 'text-decoration-line-through' : ''">
+                    {{ log.lemburJam > 0 ? `${log.lemburJam.toFixed(1)} Jam` : '-' }}
+                  </span>
+                </td>
+
+                <!-- Kolom Aksi Approval -->
+                <td class="text-center">
+                  <v-switch
+                    v-if="log.lemburJam > 0"
+                    v-model="log.lembur_approved"
+                    color="success"
+                    density="compact"
+                    hide-details
+                    class="d-inline-flex"
+                    @change="updateApproval(log)"
+                  ></v-switch>
+                  <span v-else class="text-grey text-caption">-</span>
                 </td>
               </tr>
               <tr v-if="selectedRecap.detailLogs.length === 0">
-                <td colspan="5" class="text-center pa-4 text-grey">Tidak ada rekam jejak kehadiran pada periode ini.</td>
+                <td colspan="6" class="text-center pa-4 text-grey">Tidak ada rekam jejak kehadiran pada periode ini.</td>
               </tr>
             </tbody>
           </v-table>
@@ -192,7 +217,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { db } from '../../firebase'
-import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
+// Tambahkan doc dan updateDoc untuk mengupdate status approval langsung ke database
+import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, doc, updateDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
 const branchesList = ref([])
@@ -237,7 +263,6 @@ onMounted(() => {
   onSnapshot(collection(db, 'tenants', tenantId, 'shift_patterns'), (snap) => { patternsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
 })
 
-// === ENGINE TARGET KERJA ===
 const calculateTargetKerja = (startStr, endStr, pattern, anchorStr) => {
   if (!pattern || !anchorStr) return 0
   let count = 0
@@ -284,12 +309,12 @@ const generateRecap = async () => {
       const targetKerja = calculateTargetKerja(filters.value.startDate, filters.value.endDate, userPattern, user.anchor_date)
       
       let aktualHadir = 0
-      let totalJamLembur = 0 // Ubah penampung menjadi totalJamLembur
+      let totalJamLembur = 0
       const detailLogs = []
 
       userAtt.forEach(att => {
         let lemburMenit = 0 
-        let lemburJam = 0   // Penampung lembur jam setelah pembulatan
+        let lemburJam = 0
         let myShift = null
         
         if (att.status === 'Hadir' && att.check_in) {
@@ -310,31 +335,31 @@ const generateRecap = async () => {
           if (myShift && att.check_out) {
             const actIn = parseTime(att.check_in)
             let actOut = parseTime(att.check_out)
-            
             const shIn = parseShiftTime(myShift.jam_masuk)
             let shOut = parseShiftTime(myShift.jam_pulang)
             
             if (myShift.lintas_hari) shOut += 24 * 60
             if (actOut < actIn) actOut += 24 * 60 
 
-            // 1. HITUNG LEMBUR AWAL & AKHIR DALAM MENIT
-            if (actIn < (shIn - 30)) {
-              lemburMenit += (shIn - actIn)
-            }
-            if (actOut > (shOut + 30)) {
-              lemburMenit += (actOut - shOut)
-            }
+            if (actIn < (shIn - 30)) lemburMenit += (shIn - actIn)
+            if (actOut > (shOut + 30)) lemburMenit += (actOut - shOut)
             
-            // 2. LAKUKAN PEMBULATAN KE 0.5 JAM TERDEKAT
             if (lemburMenit > 0) {
               lemburJam = Math.round((lemburMenit / 60) * 2) / 2
-              totalJamLembur += lemburJam
+              // HANYA hitung ke total jika HRD sudah menyetujui (lembur_approved = true)
+              if (att.lembur_approved === true) {
+                totalJamLembur += lemburJam
+              }
             }
           }
         }
         
-        // Simpan nilai yang sudah dibulatkan ke detail
-        detailLogs.push({ ...att, shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', lemburJam })
+        detailLogs.push({ 
+          ...att, 
+          shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', 
+          lemburJam,
+          lembur_approved: att.lembur_approved || false // Set default false jika belum ada di database
+        })
       })
 
       let absenMangkir = targetKerja - aktualHadir
@@ -344,7 +369,7 @@ const generateRecap = async () => {
 
       result.push({
         user, targetKerja, aktualHadir, absenMangkir,
-        totalLembur: totalJamLembur, // Gunakan nilai total jam yang rapi
+        totalLembur: totalJamLembur,
         detailLogs
       })
     }
@@ -354,6 +379,28 @@ const generateRecap = async () => {
     alert("Gagal memuat rekap agregasi.")
   } finally {
     isLoading.value = false
+  }
+}
+
+// === FUNGSI UPDATE APPROVAL LEMBUR ===
+const updateApproval = async (log) => {
+  try {
+    const docRef = doc(db, 'tenants', authState.value.tenantId, 'attendance', log.id)
+    // Update status ke Firestore
+    await updateDoc(docRef, { lembur_approved: log.lembur_approved })
+
+    // Kalkulasi ulang total jam lembur di UI secara instan agar tabel induk ikut berubah
+    if (selectedRecap.value) {
+      let newTotal = 0
+      selectedRecap.value.detailLogs.forEach(l => {
+        if (l.lemburJam > 0 && l.lembur_approved) newTotal += l.lemburJam
+      })
+      selectedRecap.value.totalLembur = newTotal
+    }
+  } catch (error) {
+    console.error(error)
+    alert('Gagal menyimpan status approval lembur ke server.')
+    log.lembur_approved = !log.lembur_approved // Kembalikan ke status awal jika gagal
   }
 }
 
@@ -374,7 +421,9 @@ const saveManual = async () => {
       user_id: user.id, nama: user.nama, email: user.email, branch_id: user.branch_id,
       tanggal: manualForm.value.tanggal, status: 'Hadir',
       check_in: checkInISO, check_out: checkOutISO,
-      is_manual: true, note_manual: manualForm.value.note, created_at: serverTimestamp()
+      is_manual: true, note_manual: manualForm.value.note, 
+      lembur_approved: false, // Default tidak diapprove
+      created_at: serverTimestamp()
     }
     
     await addDoc(collection(db, 'tenants', authState.value.tenantId, 'attendance'), payload)
