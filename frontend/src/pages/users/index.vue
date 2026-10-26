@@ -210,7 +210,7 @@
                     <v-icon start size="small">mdi-cash-multiple</v-icon> Struktur Gaji Pokok & Sistem Bayar
                   </div>
 
-                  <!-- AUDITOR PP 36/2021 -->
+                  <!-- AUDITOR PP 36/2021 YANG DIPERBARUI -->
                   <v-alert v-if="auditorGaji.show" :type="auditorGaji.isSafe ? 'success' : 'error'" variant="tonal" density="compact" class="mb-4 text-caption font-weight-medium">
                     {{ auditorGaji.message }}
                   </v-alert>
@@ -221,6 +221,19 @@
                     </v-col>
                     <v-col cols="12" sm="8">
                       <v-text-field v-model.number="form.gaji_pokok" label="Gaji Pokok Dasar (Wajib)" prefix="Rp" type="number" variant="outlined" density="comfortable" color="orange-darken-3" hide-details bg-color="white"></v-text-field>
+                    </v-col>
+                  </v-row>
+
+                  <!-- FITUR BARU: PENGATURAN LEMBUR KUSTOM -->
+                  <div class="mt-6 mb-2 font-weight-bold text-blue-grey-darken-2 d-flex align-center border-b pb-2">
+                    Aturan Perhitungan Lembur
+                  </div>
+                  <v-row dense>
+                    <v-col cols="12" sm="6">
+                      <v-select v-model="form.tipe_lembur" :items="['UU (PP 35/2021)', 'Nominal Kustom (Flat/Jam)']" label="Dasar Perhitungan Lembur" variant="outlined" density="comfortable" color="indigo-darken-3" hide-details bg-color="white"></v-select>
+                    </v-col>
+                    <v-col cols="12" sm="6" v-if="form.tipe_lembur === 'Nominal Kustom (Flat/Jam)'">
+                      <v-text-field v-model.number="form.lembur_kustom" label="Nominal Flat per Jam" prefix="Rp" type="number" variant="outlined" density="comfortable" color="indigo-darken-3" hide-details bg-color="white" hint="Nilai tetap lembur per 1 jam kerja." persistent-hint></v-text-field>
                     </v-col>
                   </v-row>
 
@@ -278,9 +291,7 @@ import { db } from '../../firebase'
 import { collection, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
-// State untuk Navigasi Tab
 const tabDialog = ref('biodata')
-
 const dialog = ref(false)
 const isSaving = ref(false)
 const usersList = ref([])
@@ -293,13 +304,14 @@ const branchesList = ref([])
 const patternsList = ref([]) 
 const masterComponents = ref([]) 
 
-// State Form Diperluas dengan Biodata
+// State Form Diperluas dengan Aturan Lembur Kustom
 const form = ref({ 
   nik: '', nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
   no_ktp: '', gender: 'Laki-laki', tempat_lahir: '', tanggal_lahir: '', 
   status_nikah: 'Lajang (TK)', jml_tanggungan: 0, no_hp: '', alamat: '',
   shift_pattern_id: null, anchor_date: '',
   tipe_gaji: 'Bulanan', gaji_pokok: 0,
+  tipe_lembur: 'UU (PP 35/2021)', lembur_kustom: 0,
   komponen_gaji: []
 })
 
@@ -318,7 +330,7 @@ const isBranchRole = computed(() => {
   return isCustom || form.value.role !== 'UMKM Owner'
 })
 
-// === AUDITOR PP 36 TAHUN 2021 ===
+// === AUDITOR PP 36 TAHUN 2021 (DIPERBARUI UNTUK PROYEKSI HARIAN/MINGGUAN) ===
 const auditorGaji = computed(() => {
   if (form.value.role === 'UMKM Owner') return { show: false, isSafe: true }
 
@@ -333,24 +345,30 @@ const auditorGaji = computed(() => {
     }
   })
 
-  const gapok = Number(form.value.gaji_pokok) || 0
-  const totalUpahTetap = gapok + totalTunjanganTetap
+  // Proyeksi Gaji Pokok ke skala "Bulanan" agar rasio dengan Tunjangan Tetap valid
+  let gapokBulanan = Number(form.value.gaji_pokok) || 0
+  if (form.value.tipe_gaji === 'Harian') {
+    gapokBulanan = gapokBulanan * 26 // Proyeksi 26 hari kerja sebulan
+  } else if (form.value.tipe_gaji === 'Mingguan') {
+    gapokBulanan = gapokBulanan * 4 // Proyeksi 4 minggu sebulan
+  }
 
+  const totalUpahTetap = gapokBulanan + totalTunjanganTetap
   if (totalUpahTetap === 0) return { show: false, isSafe: true }
 
-  const rasioGapok = (gapok / totalUpahTetap) * 100
+  const rasioGapok = (gapokBulanan / totalUpahTetap) * 100
 
   if (rasioGapok < 75) {
     return {
       show: true,
       isSafe: false,
-      message: `Pelanggaran PP 36/2021: Gaji Pokok (Rp ${formatRupiah(gapok)}) hanya ${rasioGapok.toFixed(1)}% dari Total Upah Tetap. UU mewajibkan Gaji Pokok minimal 75%!`
+      message: `Pelanggaran PP 36/2021: Proyeksi Gaji Pokok Bulanan (Rp ${formatRupiah(gapokBulanan)}) hanya ${rasioGapok.toFixed(1)}% dari Total Upah Tetap. UU mewajibkan minimal 75%!`
     }
   } else {
     return {
       show: true,
       isSafe: true,
-      message: `Kepatuhan Hukum Terpenuhi: Gaji Pokok sebesar ${rasioGapok.toFixed(1)}% dari Total Upah Tetap (Standar >= 75%).`
+      message: `Kepatuhan Hukum Terpenuhi: Proyeksi Gaji Pokok Bulanan sebesar ${rasioGapok.toFixed(1)}% dari Total Upah Tetap (Standar >= 75%).`
     }
   }
 })
@@ -397,7 +415,8 @@ const openAddDialog = () => {
     nik: generateNIK(), nama: '', email: '', role: 'Kasir', branch_id: null, aktif: true,
     no_ktp: '', gender: 'Laki-laki', tempat_lahir: '', tanggal_lahir: '', 
     status_nikah: 'Lajang (TK)', jml_tanggungan: 0, no_hp: '', alamat: '',
-    shift_pattern_id: null, anchor_date: '', tipe_gaji: 'Bulanan', gaji_pokok: 0, komponen_gaji: []
+    shift_pattern_id: null, anchor_date: '', tipe_gaji: 'Bulanan', gaji_pokok: 0,
+    tipe_lembur: 'UU (PP 35/2021)', lembur_kustom: 0, komponen_gaji: []
   }
   dialog.value = true
 }
@@ -431,6 +450,8 @@ const editUser = (user) => {
     anchor_date: user.anchor_date || '',
     tipe_gaji: user.tipe_gaji || 'Bulanan', 
     gaji_pokok: user.gaji_pokok || 0,
+    tipe_lembur: user.tipe_lembur || 'UU (PP 35/2021)',
+    lembur_kustom: user.lembur_kustom || 0,
     komponen_gaji: safeKomponen
   }
   dialog.value = true
@@ -440,11 +461,11 @@ const closeDialog = () => dialog.value = false
 
 const saveUser = async () => {
   if (!form.value.nama || !form.value.email) {
-    tabDialog.value = 'biodata' // Lempar user kembali ke tab pertama jika belum diisi
+    tabDialog.value = 'biodata'
     return alert('Nama dan Email wajib diisi!')
   }
   if (!auditorGaji.value.isSafe) {
-    tabDialog.value = 'payroll' // Lempar user ke tab payroll jika melanggar
+    tabDialog.value = 'payroll'
     return alert('Perbaiki proporsi Gaji Pokok terlebih dahulu sesuai aturan undang-undang!')
   }
 
@@ -455,7 +476,6 @@ const saveUser = async () => {
       branch_id: form.value.role === 'UMKM Owner' ? null : form.value.branch_id,
       aktif: form.value.aktif,
       
-      // Save data biodata
       no_ktp: form.value.no_ktp, gender: form.value.gender, 
       tempat_lahir: form.value.tempat_lahir, tanggal_lahir: form.value.tanggal_lahir, 
       status_nikah: form.value.status_nikah, jml_tanggungan: Number(form.value.jml_tanggungan), 
@@ -465,6 +485,8 @@ const saveUser = async () => {
       anchor_date: form.value.anchor_date,
       tipe_gaji: form.value.tipe_gaji,
       gaji_pokok: Number(form.value.gaji_pokok),
+      tipe_lembur: form.value.tipe_lembur,
+      lembur_kustom: Number(form.value.lembur_kustom),
       komponen_gaji: form.value.komponen_gaji.filter(k => k.id_komponen && k.nominal >= 0) 
     }
 
