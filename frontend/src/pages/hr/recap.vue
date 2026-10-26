@@ -191,22 +191,19 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { db } from '../../firebase'
-import { collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, query, where, orderBy, getDocs, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
-// State Data Master
 const branchesList = ref([])
 const usersList = ref([])
 const shiftsList = ref([])
 const patternsList = ref([])
 
-// State Fitur Utama
 const isLoading = ref(false)
 const aggregatedData = ref([])
 const detailDialog = ref(false)
 const selectedRecap = ref(null)
 
-// State Date Range Picker (Default: Tanggal 1 s.d Akhir Bulan Berjalan)
 const today = new Date()
 const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
 const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
@@ -216,7 +213,6 @@ const filters = ref({
   branch: 'all'
 })
 
-// State Manual Input & Photo
 const manualDialog = ref(false)
 const isSavingManual = ref(false)
 const manualForm = ref({ email: '', tanggal: '', in: '08:00', out: '17:00', note: '' })
@@ -240,13 +236,13 @@ onMounted(() => {
   onSnapshot(collection(db, 'tenants', tenantId, 'shift_patterns'), (snap) => { patternsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
 })
 
-// === ENGINE KALKULATOR TARGET HARI KERJA ===
+// === ENGINE TARGET KERJA (DIPERBAIKI DENGAN ZONA WAKTU UTC) ===
 const calculateTargetKerja = (startStr, endStr, pattern, anchorStr) => {
   if (!pattern || !anchorStr) return 0
   let count = 0
-  let curr = new Date(startStr)
-  const end = new Date(endStr)
-  const anchor = new Date(anchorStr)
+  let curr = new Date(startStr + 'T00:00:00Z')
+  const end = new Date(endStr + 'T00:00:00Z')
+  const anchor = new Date(anchorStr + 'T00:00:00Z')
   
   while (curr <= end) {
     const diffTime = curr - anchor
@@ -284,58 +280,66 @@ const generateRecap = async () => {
 
       const userPattern = patternsList.value.find(p => p.id === user.shift_pattern_id)
       const userAtt = rawAttendances.filter(a => a.email === user.email)
-      
-      // Hitung Target Hari Kerja (Berdasarkan Roster)
       const targetKerja = calculateTargetKerja(filters.value.startDate, filters.value.endDate, userPattern, user.anchor_date)
       
       let aktualHadir = 0
       let totalMenitLembur = 0
       const detailLogs = []
 
-      // Analisa per baris kehadiran
       userAtt.forEach(att => {
         let lemburHarian = 0
-        let telatHarian = 0
         let myShift = null
         
         if (att.status === 'Hadir' && att.check_in) {
           aktualHadir++
           
-          // Cari shift untuk hari ini
           if (userPattern && user.anchor_date) {
-            const diffDays = Math.floor((new Date(att.tanggal) - new Date(user.anchor_date)) / (1000 * 60 * 60 * 24))
+            const tglAtt = new Date(att.tanggal + 'T00:00:00Z')
+            const tglAnchor = new Date(user.anchor_date + 'T00:00:00Z')
+            const diffDays = Math.floor((tglAtt - tglAnchor) / (1000 * 60 * 60 * 24))
+            
             if (diffDays >= 0) {
               const patternDay = userPattern.jadwal_harian.find(d => d.hari_ke === (diffDays % userPattern.siklus_hari) + 1)
               if (patternDay && !patternDay.is_libur) myShift = shiftsList.value.find(s => s.id === patternDay.shift_id)
             }
           }
 
-          // Hitung Lembur Harian (Jika Pulang Tersedia)
           if (myShift && att.check_out) {
-            const actOut = parseTime(att.check_out)
+            const actIn = parseTime(att.check_in)
+            let actOut = parseTime(att.check_out)
+            
+            const shIn = parseShiftTime(myShift.jam_masuk)
             let shOut = parseShiftTime(myShift.jam_pulang)
+            
             if (myShift.lintas_hari) shOut += 24 * 60
-            if (actOut > (shOut + 30)) {
-              lemburHarian = actOut - shOut
-              totalMenitLembur += lemburHarian
+            
+            // KOREKSI TENGAH MALAM: Jika jam pulang lebih kecil dari jam masuk, artinya melintasi hari
+            if (actOut < actIn) actOut += 24 * 60 
+
+            // 1. HITUNG LEMBUR AWAL (Masuk Jauh Lebih Pagi dari Jadwal)
+            if (actIn < (shIn - 30)) {
+              lemburHarian += (shIn - actIn)
             }
+            
+            // 2. HITUNG LEMBUR AKHIR (Pulang Lebih Lambat)
+            if (actOut > (shOut + 30)) {
+              lemburHarian += (actOut - shOut)
+            }
+            
+            totalMenitLembur += lemburHarian
           }
         }
         
         detailLogs.push({ ...att, shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', lemburHarian })
       })
 
-      // Hitung Mangkir (Absen)
       let absenMangkir = targetKerja - aktualHadir
-      if (absenMangkir < 0) absenMangkir = 0 // Menghindari minus jika lembur di hari libur
+      if (absenMangkir < 0) absenMangkir = 0
 
       detailLogs.sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal))
 
       result.push({
-        user,
-        targetKerja,
-        aktualHadir,
-        absenMangkir,
+        user, targetKerja, aktualHadir, absenMangkir,
         totalLembur: Math.floor((totalMenitLembur / 60) * 10) / 10,
         detailLogs
       })
@@ -349,7 +353,6 @@ const generateRecap = async () => {
   }
 }
 
-// === FUNGSI MANUAL INPUT ===
 const openManualDialog = () => {
   manualForm.value = { email: '', tanggal: new Date().toISOString().split('T')[0], in: '08:00', out: '17:00', note: '' }
   manualDialog.value = true
@@ -357,44 +360,27 @@ const openManualDialog = () => {
 
 const saveManual = async () => {
   if (!manualForm.value.email || !manualForm.value.tanggal || !manualForm.value.in) return alert("Lengkapi data form manual!")
-  
   isSavingManual.value = true
   try {
     const user = usersList.value.find(u => u.email === manualForm.value.email)
-    
-    // Gabungkan Tgl + Jam menjadi ISO Format (Simulasi format kamera Vue)
     const checkInISO = new Date(`${manualForm.value.tanggal}T${manualForm.value.in}:00`).toISOString()
     const checkOutISO = manualForm.value.out ? new Date(`${manualForm.value.tanggal}T${manualForm.value.out}:00`).toISOString() : null
     
     const payload = {
       user_id: user.id, nama: user.nama, email: user.email, branch_id: user.branch_id,
-      tanggal: manualForm.value.tanggal,
-      status: 'Hadir',
+      tanggal: manualForm.value.tanggal, status: 'Hadir',
       check_in: checkInISO, check_out: checkOutISO,
-      is_manual: true,
-      note_manual: manualForm.value.note,
-      created_at: serverTimestamp()
+      is_manual: true, note_manual: manualForm.value.note, created_at: serverTimestamp()
     }
     
     await addDoc(collection(db, 'tenants', authState.value.tenantId, 'attendance'), payload)
     manualDialog.value = false
     alert("Absen manual berhasil disimpan! Silakan klik 'Tarik Data' untuk menyegarkan tabel.")
-  } catch (err) {
-    alert("Gagal menyimpan absen manual.")
-  } finally {
-    isSavingManual.value = false
-  }
+  } catch (err) { alert("Gagal menyimpan absen manual.") } finally { isSavingManual.value = false }
 }
 
-const openDetail = (recap) => {
-  selectedRecap.value = recap
-  detailDialog.value = true
-}
-
-const viewPhoto = (url, empName, type) => {
-  if (!url) return
-  photoDialog.value = { show: true, url, employee: empName, type }
-}
+const openDetail = (recap) => { selectedRecap.value = recap; detailDialog.value = true }
+const viewPhoto = (url, empName, type) => { if (!url) return; photoDialog.value = { show: true, url, employee: empName, type } }
 
 const getBranchName = (branchId) => branchId ? (branchesList.value.find(b => b.id === branchId)?.nama_cabang || 'Kantor Pusat') : 'Kantor Pusat'
 const formatDate = (dateStr) => dateStr ? new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr)) : '-'
