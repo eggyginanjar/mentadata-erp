@@ -2,127 +2,177 @@
 <template>
   <v-container fluid class="pa-0">
     <!-- Header Halaman -->
-    <div class="mb-6">
-      <h2 class="text-h5 font-weight-bold text-blue-grey-darken-4">Rekap Presensi Karyawan</h2>
-      <p class="text-body-2 text-blue-grey-lighten-1">Pantau riwayat kehadiran, verifikasi foto, dan jam kerja karyawan.</p>
+    <div class="mb-6 d-flex align-center justify-space-between">
+      <div>
+        <h2 class="text-h5 font-weight-bold text-blue-grey-darken-4">Rekap & Analisa Presensi</h2>
+        <p class="text-body-2 text-blue-grey-lighten-1">Pantau agregasi kehadiran, ketidakhadiran (absen), lembur, dan input data manual.</p>
+      </div>
+      <v-btn color="orange-darken-3" prepend-icon="mdi-clipboard-account" rounded="pill" elevation="2" class="text-none font-weight-bold" @click="openManualDialog">
+        Input Absen Manual
+      </v-btn>
     </div>
 
-    <!-- Panel Filter -->
+    <!-- Panel Filter Rentang Tanggal & Cabang -->
     <v-card class="mb-5 pa-4 border-sm" elevation="0" rounded="xl" color="white">
       <v-row dense align="center">
         <v-col cols="12" md="3">
-          <v-text-field
-            v-model="filterMonth"
-            type="month"
-            label="Bulan Presensi"
-            variant="outlined"
-            density="comfortable"
-            color="teal-darken-3"
-            hide-details
-            prepend-inner-icon="mdi-calendar-month"
-          ></v-text-field>
+          <v-text-field v-model="filters.startDate" type="date" label="Tanggal Mulai" variant="outlined" density="comfortable" color="teal-darken-3" hide-details></v-text-field>
         </v-col>
-        <v-col cols="12" md="4">
+        <v-col cols="12" md="3">
+          <v-text-field v-model="filters.endDate" type="date" label="Tanggal Akhir" variant="outlined" density="comfortable" color="teal-darken-3" hide-details></v-text-field>
+        </v-col>
+        <v-col cols="12" md="3">
           <v-select
-            v-model="filterBranch"
+            v-model="filters.branch"
             :items="[{id: 'all', nama_cabang: 'Semua Cabang'}, ...branchesList]"
-            item-title="nama_cabang"
-            item-value="id"
-            label="Filter Penempatan / Cabang"
-            variant="outlined"
-            density="comfortable"
-            color="teal-darken-3"
-            hide-details
-            prepend-inner-icon="mdi-store-marker-outline"
+            item-title="nama_cabang" item-value="id" label="Filter Cabang"
+            variant="outlined" density="comfortable" color="teal-darken-3" hide-details
           ></v-select>
         </v-col>
-        <v-col cols="12" md="5" class="d-flex justify-end">
-          <v-btn 
-            color="teal-darken-3" 
-            size="large" 
-            rounded="lg" 
-            class="text-none font-weight-bold px-6" 
-            prepend-icon="mdi-magnify"
-            :loading="isLoading"
-            @click="fetchAttendance"
-          >
+        <v-col cols="12" md="3" class="d-flex justify-end">
+          <v-btn color="teal-darken-3" size="large" rounded="lg" class="text-none font-weight-bold px-6 w-100" prepend-icon="mdi-magnify" :loading="isLoading" @click="generateRecap">
             Tarik Data
           </v-btn>
         </v-col>
       </v-row>
     </v-card>
 
-    <!-- Tabel Data Kehadiran -->
+    <!-- Tabel Agregasi Karyawan -->
     <v-card class="border-sm" elevation="0" rounded="xl" color="white">
       <v-table hover class="bg-white">
         <thead class="bg-blue-grey-lighten-5">
           <tr>
-            <th class="font-weight-bold text-blue-grey-darken-3">Tanggal</th>
-            <th class="font-weight-bold text-blue-grey-darken-3">Karyawan</th>
-            <th class="font-weight-bold text-blue-grey-darken-3">Cabang</th>
-            <th class="font-weight-bold text-blue-grey-darken-3">Check-In</th>
-            <th class="font-weight-bold text-blue-grey-darken-3">Check-Out</th>
-            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Status</th>
+            <th class="font-weight-bold text-blue-grey-darken-3">Karyawan & Cabang</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Target Hari Kerja</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Aktual Hadir</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Absen / Mangkir</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center">Total Lembur</th>
+            <th class="font-weight-bold text-blue-grey-darken-3 text-center" style="width: 130px;">Aksi</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="record in filteredRecords" :key="record.id">
-            <td class="font-weight-bold text-teal-darken-3">
-              {{ formatDate(record.tanggal) }}
-            </td>
-            <td>
-              <div class="font-weight-bold text-blue-grey-darken-4">{{ record.nama }}</div>
-              <div class="text-caption text-blue-grey-darken-1">{{ record.email }}</div>
-            </td>
-            <td class="text-blue-grey-darken-2 font-weight-medium">
-              <v-icon start size="x-small">mdi-map-marker-outline</v-icon>
-              {{ getBranchName(record.branch_id) }}
-            </td>
-            <td>
-              <div v-if="record.check_in" class="d-flex align-center">
-                <v-avatar size="40" rounded class="mr-3 cursor-pointer border border-white-10" @click="viewPhoto(record.photo_in, record.nama, 'Check-In')">
-                  <v-img :src="record.photo_in" cover></v-img>
-                </v-avatar>
-                <div>
-                  <div class="font-weight-bold text-body-2">{{ formatTime(record.check_in) }}</div>
-                  <div class="text-caption text-success font-weight-medium">
-                    Jarak: {{ record.distance_in }}m
-                  </div>
-                </div>
+          <tr v-for="recap in aggregatedData" :key="recap.user.id">
+            <td class="py-3">
+              <div class="font-weight-bold text-blue-grey-darken-4">{{ recap.user.nama }}</div>
+              <div class="text-caption text-teal-darken-3 font-weight-medium">
+                <v-icon start size="x-small">mdi-map-marker-outline</v-icon>{{ getBranchName(recap.user.branch_id) }}
               </div>
-              <span v-else class="text-caption text-grey font-italic">- Belum Masuk -</span>
             </td>
-            <td>
-              <div v-if="record.check_out" class="d-flex align-center">
-                <v-avatar size="40" rounded class="mr-3 cursor-pointer border border-white-10" @click="viewPhoto(record.photo_out, record.nama, 'Check-Out')">
-                  <v-img :src="record.photo_out" cover></v-img>
-                </v-avatar>
-                <div>
-                  <div class="font-weight-bold text-body-2">{{ formatTime(record.check_out) }}</div>
-                  <div class="text-caption text-success font-weight-medium">
-                    Jarak: {{ record.distance_out }}m
-                  </div>
-                </div>
-              </div>
-              <span v-else class="text-caption text-grey font-italic">- Belum Pulang -</span>
-            </td>
-            <td class="text-center">
-              <v-chip size="small" color="success" variant="flat" class="font-weight-bold">
-                {{ record.status || 'Hadir' }}
+            <td class="text-center font-weight-bold text-blue-grey-darken-3">{{ recap.targetKerja }} Hari</td>
+            <td class="text-center font-weight-bold text-success">{{ recap.aktualHadir }} Hari</td>
+            <td class="text-center font-weight-bold text-error">
+              <v-chip size="small" :color="recap.absenMangkir > 0 ? 'error' : 'grey-lighten-2'" :variant="recap.absenMangkir > 0 ? 'tonal' : 'flat'">
+                {{ recap.absenMangkir }} Hari
               </v-chip>
             </td>
+            <td class="text-center font-weight-bold text-orange-darken-3">{{ recap.totalLembur > 0 ? `${recap.totalLembur.toFixed(1)} Jam` : '-' }}</td>
+            <td class="text-center">
+              <v-btn color="indigo-darken-2" variant="tonal" size="small" class="text-none font-weight-bold" @click="openDetail(recap)">
+                Lihat Detail
+              </v-btn>
+            </td>
           </tr>
-          <tr v-if="filteredRecords.length === 0">
+          <tr v-if="aggregatedData.length === 0">
             <td colspan="6" class="text-center pa-8 text-blue-grey-lighten-2">
-              <v-icon size="48" class="mb-2">mdi-clipboard-text-search-outline</v-icon>
-              <p>Tidak ada data absensi untuk periode/cabang yang dipilih.</p>
+              <v-icon size="48" class="mb-2">mdi-account-search-outline</v-icon>
+              <p>Tarik data untuk melihat agregasi kehadiran karyawan.</p>
             </td>
           </tr>
         </tbody>
       </v-table>
     </v-card>
 
-    <!-- Dialog Pratinjau Foto -->
+    <!-- Dialog Detail Harian Karyawan -->
+    <v-dialog v-model="detailDialog" max-width="900px" scrollable>
+      <v-card rounded="xl" color="white" v-if="selectedRecap">
+        <v-card-title class="pa-4 bg-indigo-darken-3 text-white d-flex align-center">
+          <v-icon start>mdi-calendar-multiselect</v-icon>
+          <span class="font-weight-bold">Rincian Kehadiran: {{ selectedRecap.user.nama }}</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" @click="detailDialog = false"></v-btn>
+        </v-card-title>
+        <v-card-text class="pa-0">
+          <v-table density="comfortable" hover>
+            <thead class="bg-grey-lighten-4">
+              <tr>
+                <th class="font-weight-bold">Tanggal</th>
+                <th class="font-weight-bold">Shift Target</th>
+                <th class="font-weight-bold">Check-In</th>
+                <th class="font-weight-bold">Check-Out</th>
+                <th class="font-weight-bold">Lembur</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="log in selectedRecap.detailLogs" :key="log.id">
+                <td class="font-weight-medium">{{ formatDate(log.tanggal) }}</td>
+                <td class="text-caption text-grey-darken-1">{{ log.shiftName }}</td>
+                <td>
+                  <div class="d-flex align-center gap-2">
+                    <v-avatar v-if="log.photo_in" size="32" rounded class="cursor-pointer border" @click="viewPhoto(log.photo_in, selectedRecap.user.nama, 'Check-In')">
+                      <v-img :src="log.photo_in" cover></v-img>
+                    </v-avatar>
+                    <v-icon v-else-if="log.is_manual" color="orange-darken-3" size="small" class="mr-1">mdi-hand-pen</v-icon>
+                    <div>
+                      <div class="font-weight-bold">{{ formatTime(log.check_in) }}</div>
+                      <div class="text-caption" :class="log.is_manual ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ log.is_manual ? 'Manual' : `Jarak: ${log.distance_in}m` }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  <div v-if="log.check_out" class="d-flex align-center gap-2">
+                    <v-avatar v-if="log.photo_out" size="32" rounded class="cursor-pointer border" @click="viewPhoto(log.photo_out, selectedRecap.user.nama, 'Check-Out')">
+                      <v-img :src="log.photo_out" cover></v-img>
+                    </v-avatar>
+                    <v-icon v-else-if="log.is_manual" color="orange-darken-3" size="small" class="mr-1">mdi-hand-pen</v-icon>
+                    <div>
+                      <div class="font-weight-bold">{{ formatTime(log.check_out) }}</div>
+                      <div class="text-caption" :class="log.is_manual ? 'text-orange-darken-3 font-weight-bold' : 'text-success'">{{ log.is_manual ? 'Manual' : `Jarak: ${log.distance_out}m` }}</div>
+                    </div>
+                  </div>
+                  <span v-else class="text-caption text-grey font-italic">Belum Pulang</span>
+                </td>
+                <td class="text-orange-darken-3 font-weight-bold">
+                  {{ log.lemburHarian > 0 ? `${(log.lemburHarian/60).toFixed(1)} Jam` : '-' }}
+                </td>
+              </tr>
+              <tr v-if="selectedRecap.detailLogs.length === 0">
+                <td colspan="5" class="text-center pa-4 text-grey">Tidak ada rekam jejak kehadiran pada periode ini.</td>
+              </tr>
+            </tbody>
+          </v-table>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog Input Manual -->
+    <v-dialog v-model="manualDialog" max-width="500px" persistent>
+      <v-card rounded="xl">
+        <v-card-title class="pa-4 bg-orange-darken-3 text-white d-flex align-center">
+          <v-icon start>mdi-clipboard-account</v-icon>
+          <span class="font-weight-bold">Input Absen Manual</span>
+          <v-spacer></v-spacer>
+          <v-btn icon="mdi-close" variant="text" color="white" @click="manualDialog = false"></v-btn>
+        </v-card-title>
+        <v-card-text class="pa-6 bg-grey-lighten-4">
+          <v-form @submit.prevent="saveManual">
+            <v-select v-model="manualForm.email" :items="usersList" item-title="nama" item-value="email" label="Pilih Karyawan" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-select>
+            <v-text-field v-model="manualForm.tanggal" type="date" label="Tanggal Kehadiran" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field>
+            <v-row dense>
+              <v-col cols="6"><v-text-field v-model="manualForm.in" type="time" label="Jam Masuk" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field></v-col>
+              <v-col cols="6"><v-text-field v-model="manualForm.out" type="time" label="Jam Pulang" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" class="mb-3"></v-text-field></v-col>
+            </v-row>
+            <v-textarea v-model="manualForm.note" label="Keterangan / Alasan Manual" variant="outlined" density="comfortable" color="orange-darken-3" bg-color="white" rows="2" hide-details></v-textarea>
+          </v-form>
+        </v-card-text>
+        <v-card-actions class="pa-4 bg-white border-t">
+          <v-spacer></v-spacer>
+          <v-btn variant="text" color="grey-darken-1" class="font-weight-bold text-none" @click="manualDialog = false">Batal</v-btn>
+          <v-btn color="orange-darken-3" variant="elevated" rounded="lg" class="px-6 font-weight-bold text-none" @click="saveManual" :loading="isSavingManual">Simpan Kehadiran</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Dialog Pratinjau Foto (Tetap Ada) -->
     <v-dialog v-model="photoDialog.show" max-width="400">
       <v-card rounded="xl" class="bg-black">
         <v-card-title class="pa-4 d-flex justify-space-between align-center text-white border-b border-white-10">
@@ -141,90 +191,212 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { db } from '../../firebase'
-import { collection, query, where, orderBy, getDocs, onSnapshot } from 'firebase/firestore'
+import { collection, query, where, getDocs, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore'
 import { authState } from '../../store/auth'
 
-const isLoading = ref(false)
-const rawRecords = ref([])
+// State Data Master
 const branchesList = ref([])
+const usersList = ref([])
+const shiftsList = ref([])
+const patternsList = ref([])
 
-// Default ke bulan berjalan (Format: YYYY-MM)
+// State Fitur Utama
+const isLoading = ref(false)
+const aggregatedData = ref([])
+const detailDialog = ref(false)
+const selectedRecap = ref(null)
+
+// State Date Range Picker (Default: Tanggal 1 s.d Akhir Bulan Berjalan)
 const today = new Date()
-const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
-const filterMonth = ref(currentMonth)
-const filterBranch = ref('all')
+const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
+const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+const filters = ref({
+  startDate: firstDay.toISOString().split('T')[0],
+  endDate: lastDay.toISOString().split('T')[0],
+  branch: 'all'
+})
 
+// State Manual Input & Photo
+const manualDialog = ref(false)
+const isSavingManual = ref(false)
+const manualForm = ref({ email: '', tanggal: '', in: '08:00', out: '17:00', note: '' })
 const photoDialog = ref({ show: false, url: '', employee: '', type: '' })
+
+const parseTime = (isoString) => {
+  const d = new Date(isoString)
+  return d.getHours() * 60 + d.getMinutes()
+}
+const parseShiftTime = (timeStr) => {
+  if (!timeStr) return 0
+  const [h, m] = timeStr.split(':').map(Number)
+  return h * 60 + m
+}
 
 onMounted(() => {
   const tenantId = authState.value.tenantId
-
-  // Tarik data cabang untuk dropdown
-  onSnapshot(collection(db, 'tenants', tenantId, 'branches'), (snapshot) => {
-    branchesList.value = snapshot.docs.map(doc => ({ id: doc.id, nama_cabang: doc.data().nama_cabang }))
-  })
-
-  // Tarik otomatis data bulan ini saat halaman dimuat
-  fetchAttendance()
+  onSnapshot(collection(db, 'tenants', tenantId, 'branches'), (snap) => { branchesList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
+  onSnapshot(collection(db, 'tenants', tenantId, 'users'), (snap) => { usersList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
+  onSnapshot(collection(db, 'tenants', tenantId, 'master_shifts'), (snap) => { shiftsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
+  onSnapshot(collection(db, 'tenants', tenantId, 'shift_patterns'), (snap) => { patternsList.value = snap.docs.map(d => ({ id: d.id, ...d.data() })) })
 })
 
-const fetchAttendance = async () => {
-  if (!filterMonth.value) return
+// === ENGINE KALKULATOR TARGET HARI KERJA ===
+const calculateTargetKerja = (startStr, endStr, pattern, anchorStr) => {
+  if (!pattern || !anchorStr) return 0
+  let count = 0
+  let curr = new Date(startStr)
+  const end = new Date(endStr)
+  const anchor = new Date(anchorStr)
+  
+  while (curr <= end) {
+    const diffTime = curr - anchor
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
+    if (diffDays >= 0) {
+      const dayOfCycle = (diffDays % pattern.siklus_hari) + 1
+      const patternDay = pattern.jadwal_harian.find(d => d.hari_ke === dayOfCycle)
+      if (patternDay && !patternDay.is_libur) count++
+    }
+    curr.setDate(curr.getDate() + 1)
+  }
+  return count
+}
 
+const generateRecap = async () => {
+  if (!filters.value.startDate || !filters.value.endDate) return alert('Pilih rentang tanggal terlebih dahulu.')
   isLoading.value = true
-  rawRecords.value = []
+  aggregatedData.value = []
 
   try {
     const tenantId = authState.value.tenantId
-    const startDate = `${filterMonth.value}-01`
-    const endDate = `${filterMonth.value}-31`
-
-    // Strategi Query: Menggunakan operator string untuk meraup data dalam 1 bulan
-    const q = query(
+    const qAtt = query(
       collection(db, 'tenants', tenantId, 'attendance'),
-      where('tanggal', '>=', startDate),
-      where('tanggal', '<=', endDate),
-      orderBy('tanggal', 'desc')
+      where('tanggal', '>=', filters.value.startDate),
+      where('tanggal', '<=', filters.value.endDate)
     )
+    const attSnap = await getDocs(qAtt)
+    const rawAttendances = attSnap.docs.map(d => ({ id: d.id, ...d.data() }))
 
-    const snapshot = await getDocs(q)
-    rawRecords.value = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+    const result = []
+    
+    for (const user of usersList.value) {
+      if (!user.aktif || user.role === 'UMKM Owner') continue
+      if (filters.value.branch !== 'all' && user.branch_id !== filters.value.branch) continue
+
+      const userPattern = patternsList.value.find(p => p.id === user.shift_pattern_id)
+      const userAtt = rawAttendances.filter(a => a.email === user.email)
+      
+      // Hitung Target Hari Kerja (Berdasarkan Roster)
+      const targetKerja = calculateTargetKerja(filters.value.startDate, filters.value.endDate, userPattern, user.anchor_date)
+      
+      let aktualHadir = 0
+      let totalMenitLembur = 0
+      const detailLogs = []
+
+      // Analisa per baris kehadiran
+      userAtt.forEach(att => {
+        let lemburHarian = 0
+        let telatHarian = 0
+        let myShift = null
+        
+        if (att.status === 'Hadir' && att.check_in) {
+          aktualHadir++
+          
+          // Cari shift untuk hari ini
+          if (userPattern && user.anchor_date) {
+            const diffDays = Math.floor((new Date(att.tanggal) - new Date(user.anchor_date)) / (1000 * 60 * 60 * 24))
+            if (diffDays >= 0) {
+              const patternDay = userPattern.jadwal_harian.find(d => d.hari_ke === (diffDays % userPattern.siklus_hari) + 1)
+              if (patternDay && !patternDay.is_libur) myShift = shiftsList.value.find(s => s.id === patternDay.shift_id)
+            }
+          }
+
+          // Hitung Lembur Harian (Jika Pulang Tersedia)
+          if (myShift && att.check_out) {
+            const actOut = parseTime(att.check_out)
+            let shOut = parseShiftTime(myShift.jam_pulang)
+            if (myShift.lintas_hari) shOut += 24 * 60
+            if (actOut > (shOut + 30)) {
+              lemburHarian = actOut - shOut
+              totalMenitLembur += lemburHarian
+            }
+          }
+        }
+        
+        detailLogs.push({ ...att, shiftName: myShift ? myShift.nama_shift : 'Libur / Tidak Ditemukan', lemburHarian })
+      })
+
+      // Hitung Mangkir (Absen)
+      let absenMangkir = targetKerja - aktualHadir
+      if (absenMangkir < 0) absenMangkir = 0 // Menghindari minus jika lembur di hari libur
+
+      detailLogs.sort((a, b) => new Date(a.tanggal) - new Date(b.tanggal))
+
+      result.push({
+        user,
+        targetKerja,
+        aktualHadir,
+        absenMangkir,
+        totalLembur: Math.floor((totalMenitLembur / 60) * 10) / 10,
+        detailLogs
+      })
+    }
+    
+    aggregatedData.value = result
   } catch (error) {
-    console.error("Gagal menarik data absensi:", error)
-    alert("Terjadi kesalahan saat memuat rekap presensi.")
+    alert("Gagal memuat rekap agregasi.")
   } finally {
     isLoading.value = false
   }
 }
 
-// Komputasi penyaringan berbasis Cabang
-const filteredRecords = computed(() => {
-  if (filterBranch.value === 'all') {
-    return rawRecords.value
+// === FUNGSI MANUAL INPUT ===
+const openManualDialog = () => {
+  manualForm.value = { email: '', tanggal: new Date().toISOString().split('T')[0], in: '08:00', out: '17:00', note: '' }
+  manualDialog.value = true
+}
+
+const saveManual = async () => {
+  if (!manualForm.value.email || !manualForm.value.tanggal || !manualForm.value.in) return alert("Lengkapi data form manual!")
+  
+  isSavingManual.value = true
+  try {
+    const user = usersList.value.find(u => u.email === manualForm.value.email)
+    
+    // Gabungkan Tgl + Jam menjadi ISO Format (Simulasi format kamera Vue)
+    const checkInISO = new Date(`${manualForm.value.tanggal}T${manualForm.value.in}:00`).toISOString()
+    const checkOutISO = manualForm.value.out ? new Date(`${manualForm.value.tanggal}T${manualForm.value.out}:00`).toISOString() : null
+    
+    const payload = {
+      user_id: user.id, nama: user.nama, email: user.email, branch_id: user.branch_id,
+      tanggal: manualForm.value.tanggal,
+      status: 'Hadir',
+      check_in: checkInISO, check_out: checkOutISO,
+      is_manual: true,
+      note_manual: manualForm.value.note,
+      created_at: serverTimestamp()
+    }
+    
+    await addDoc(collection(db, 'tenants', authState.value.tenantId, 'attendance'), payload)
+    manualDialog.value = false
+    alert("Absen manual berhasil disimpan! Silakan klik 'Tarik Data' untuk menyegarkan tabel.")
+  } catch (err) {
+    alert("Gagal menyimpan absen manual.")
+  } finally {
+    isSavingManual.value = false
   }
-  return rawRecords.value.filter(record => record.branch_id === filterBranch.value)
-})
+}
+
+const openDetail = (recap) => {
+  selectedRecap.value = recap
+  detailDialog.value = true
+}
 
 const viewPhoto = (url, empName, type) => {
   if (!url) return
   photoDialog.value = { show: true, url, employee: empName, type }
 }
 
-const getBranchName = (branchId) => {
-  if (!branchId) return 'Kantor Pusat (HQ)'
-  const branch = branchesList.value.find(b => b.id === branchId)
-  return branch ? branch.nama_cabang : 'Cabang Tidak Dikenal'
-}
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return '-'
-  const d = new Date(dateStr)
-  return new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'long', year: 'numeric' }).format(d)
-}
-
-const formatTime = (isoString) => {
-  if (!isoString) return '--:--'
-  const d = new Date(isoString)
-  return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
-}
+const getBranchName = (branchId) => branchId ? (branchesList.value.find(b => b.id === branchId)?.nama_cabang || 'Kantor Pusat') : 'Kantor Pusat'
+const formatDate = (dateStr) => dateStr ? new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr)) : '-'
+const formatTime = (isoString) => isoString ? new Date(isoString).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : '--:--'
 </script>
