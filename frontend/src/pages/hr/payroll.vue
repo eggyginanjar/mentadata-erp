@@ -147,7 +147,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { db } from '../../firebase'
 import { collection, query, where, getDocs } from 'firebase/firestore'
 import { authState } from '../../store/auth'
@@ -218,8 +218,8 @@ const generatePayroll = async () => {
 
       let totalHariKerja = 0
       let totalTelatMenit = 0
-      let totalMenitLembur = 0
-      let totalDataMenggantung = 0 // Variabel Pelacak Lupa Pulang
+      let totalJamLembur = 0 // Menggunakan jam lembur langsung
+      let totalDataMenggantung = 0 
 
       const userAtt = attendances.filter(a => a.email === user.email)
       const userPattern = patterns.find(p => p.id === user.shift_pattern_id)
@@ -228,13 +228,11 @@ const generatePayroll = async () => {
       userAtt.forEach(att => {
         if (att.status === 'Hadir' && att.check_in) {
           
-          // LOGIKA HANGUS: Jika belum check out, masukkan ke data menggantung dan lompati kalkulasi gaji/lembur hari itu
           if (!att.check_out) {
             totalDataMenggantung++
             return 
           }
 
-          // Jika check_out ada, dihitung sebagai Kehadiran Valid
           totalHariKerja++
           
           let myShift = null
@@ -266,20 +264,25 @@ const generatePayroll = async () => {
               totalTelatMenit += (actIn - shIn)
             }
             
-            let lemburHarian = 0
+            let lemburMenit = 0
             if (actIn < (shIn - 30)) {
-              lemburHarian += (shIn - actIn)
+              lemburMenit += (shIn - actIn)
             }
             if (actOut > (shOut + 30)) {
-              lemburHarian += (actOut - shOut)
+              lemburMenit += (actOut - shOut)
             }
             
-            totalMenitLembur += lemburHarian
+            // PEMBULATAN & FILTER APPROVAL LEMBUR
+            if (lemburMenit > 0) {
+              let lemburJam = Math.round((lemburMenit / 60) * 2) / 2
+              // Hanya ditambahkan ke total jika sudah disetujui (SPKL)
+              if (att.lembur_approved === true) {
+                totalJamLembur += lemburJam
+              }
+            }
           }
         }
       })
-
-      const totalJamLembur = Math.floor((totalMenitLembur / 60) * 10) / 10
 
       const isHarian = user.tipe_gaji === 'Harian'
       const isMingguan = user.tipe_gaji === 'Mingguan'
@@ -321,7 +324,7 @@ const generatePayroll = async () => {
         if (user.tipe_lembur === 'Nominal Kustom (Flat/Jam)') {
           const tarifKustom = user.lembur_kustom || 0
           upahLembur = totalJamLembur * tarifKustom
-          rincianLembur.push(`Lembur Flat Kustom (${totalJamLembur} Jam x ${formatRupiah(tarifKustom)})`)
+          rincianLembur.push(`Lembur Flat Disetujui (${totalJamLembur} Jam x ${formatRupiah(tarifKustom)})`)
         } else {
           const basisUpahBulanan = isHarian 
             ? (((user.gaji_pokok || 0) * 26) + totalTunjanganTetap) 
@@ -329,7 +332,9 @@ const generatePayroll = async () => {
 
           const hasilLembur = calculateLembur(basisUpahBulanan, totalJamLembur, false, 6)
           upahLembur = hasilLembur.totalUpahLembur
-          rincianLembur = hasilLembur.rincianKalkulasi
+          
+          // Modifikasi teks rincian agar HRD tahu ini adalah lembur yang valid
+          rincianLembur = hasilLembur.rincianKalkulasi.map(r => r.replace('Lembur', 'Lembur Disetujui'))
         }
       }
 
@@ -346,7 +351,7 @@ const generatePayroll = async () => {
         total_tunjangan: totalTunjangan,
         total_potongan: totalPotongan,
         upah_lembur: upahLembur,
-        total_data_menggantung: totalDataMenggantung, // Kirim variabel ini ke UI
+        total_data_menggantung: totalDataMenggantung,
         rincian_lembur: rincianLembur,
         take_home_pay: takeHomePay
       })
