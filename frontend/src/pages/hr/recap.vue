@@ -107,7 +107,7 @@
                 <th class="font-weight-bold">Check-In</th>
                 <th class="font-weight-bold">Check-Out</th>
                 <th class="font-weight-bold">Lembur Aktual</th>
-                <th class="font-weight-bold text-center">Approval (SPKL)</th>
+                <th class="font-weight-bold text-center">Approval (SPL)</th>
               </tr>
             </thead>
             <tbody>
